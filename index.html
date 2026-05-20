@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>맛;하루(맛있는 하루) 방문보고 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+
+  :root {
+    --primary: #E07A4F;
+    --primary-light: #F0A882;
+    --primary-xlight: #FEF0E8;
+    --amber: #D4874A;
+    --brown: #5A3A28;
+    --cream: #FFFBF7;
+    --cream-d: #FDF1E6;
+    --sand: #EDD9C8;
+    --gray: #A08070;
+    --gray-l: #E8D8CC;
+    --green: #6A9E56;
+    --red: #C85050;
+    --white: #FFFFFF;
+    --shadow: 0 4px 20px rgba(200,120,80,0.13);
+    --shadow-lg: 0 8px 32px rgba(200,120,80,0.18);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--cream);
+    color: var(--brown);
+    min-height: 100vh;
+  }
+
+  /* ── 공통 ── */
+  .hidden { display: none !important; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 20px; border: none; border-radius: 10px;
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: all .18s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: #d06a3f; transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn-amber { background: var(--amber); color: #fff; }
+  .btn-amber:hover { background: #c4773a; transform: translateY(-1px); }
+  .btn-ghost { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-ghost:hover { background: var(--primary-xlight); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { background: #b84040; }
+  .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 8px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; }
+
+  input, textarea, select {
+    width: 100%; padding: 10px 14px; border: 1.5px solid var(--sand);
+    border-radius: 10px; font-family: inherit; font-size: 14px; color: var(--brown);
+    background: #fff; outline: none; transition: border .18s;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--primary); }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+
+  .label { font-size: 13px; font-weight: 600; color: var(--brown); margin-bottom: 6px; display: block; }
+  .label span.req { color: var(--primary); margin-left: 2px; }
+
+  .field { margin-bottom: 18px; }
+
+  .card {
+    background: #fff; border-radius: 16px;
+    box-shadow: var(--shadow); padding: 24px;
+  }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 700;
+  }
+  .badge-admin { background: var(--primary-xlight); color: var(--primary); }
+  .badge-user  { background: #EEF6EC; color: var(--green); }
+
+  /* ── 로그인 ── */
+  #page-login {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, var(--primary-xlight) 0%, var(--cream) 60%);
+  }
+  .login-box {
+    width: 100%; max-width: 400px; padding: 20px;
+  }
+  .login-logo {
+    text-align: center; margin-bottom: 32px;
+  }
+  .login-logo .emoji { font-size: 48px; display: block; margin-bottom: 8px; }
+  .login-logo h1 { font-size: 32px; font-weight: 900; color: var(--primary); }
+  .login-logo p  { font-size: 13px; color: var(--gray); margin-top: 4px; }
+  .login-card {
+    background: #fff; border-radius: 20px; padding: 32px;
+    box-shadow: var(--shadow-lg);
+  }
+  .login-card h2 { font-size: 17px; font-weight: 700; margin-bottom: 24px; }
+  .login-err {
+    background: #FEF4F0; color: var(--red); border-radius: 8px;
+    padding: 10px 14px; font-size: 13px; margin-bottom: 14px;
+  }
+
+  /* ── 네비 ── */
+  #nav {
+    background: #fff; box-shadow: 0 2px 12px rgba(200,120,80,0.10);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .nav-inner {
+    max-width: 960px; margin: 0 auto; padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between; height: 60px;
+  }
+  .nav-logo { font-size: 18px; font-weight: 900; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+  .nav-right { display: flex; align-items: center; gap: 12px; }
+  .nav-user { font-size: 13px; color: var(--gray); }
+
+  /* ── 탭 ── */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 24px;
+    background: var(--cream-d); padding: 4px; border-radius: 12px;
+  }
+  .tab-btn {
+    flex: 1; padding: 9px; border: none; border-radius: 9px;
+    font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    background: transparent; color: var(--gray); transition: all .18s;
+  }
+  .tab-btn.active { background: #fff; color: var(--primary); box-shadow: var(--shadow); }
+
+  /* ── 메인 레이아웃 ── */
+  #app-main {
+    max-width: 960px; margin: 0 auto; padding: 28px 20px;
+  }
+
+  /* ── 보고서 작성 ── */
+  .report-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;
+  }
+  .report-header h2 { font-size: 20px; font-weight: 800; }
+
+  .photo-upload-area {
+    border: 2px dashed var(--primary-light); border-radius: 12px;
+    padding: 20px; text-align: center; cursor: pointer;
+    background: var(--primary-xlight); transition: all .18s;
+  }
+  .photo-upload-area:hover { border-color: var(--primary); background: #fde8d8; }
+  .photo-upload-area p { font-size: 13px; color: var(--gray); margin-top: 6px; }
+  .photo-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px; margin-top: 14px;
+  }
+  .photo-thumb {
+    position: relative; aspect-ratio: 1;
+    border-radius: 10px; overflow: hidden; background: var(--sand);
+  }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-thumb .del-btn {
+    position: absolute; top: 4px; right: 4px;
+    background: rgba(200,80,80,.85); color: #fff; border: none;
+    border-radius: 50%; width: 22px; height: 22px; cursor: pointer;
+    font-size: 12px; line-height: 1;
+  }
+  .photo-count {
+    display: inline-block; padding: 4px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; margin-top: 8px;
+  }
+  .photo-count.ok { background: #EEF6EC; color: var(--green); }
+  .photo-count.need { background: var(--primary-xlight); color: var(--primary); }
+
+  .submit-box {
+    background: var(--primary-xlight); border-radius: 14px;
+    padding: 20px; margin-top: 8px; text-align: center;
+  }
+  .submit-box p { font-size: 13px; color: var(--gray); margin-bottom: 14px; }
+
+  /* ── 보고서 목록 ── */
+  .report-list { display: flex; flex-direction: column; gap: 14px; }
+  .report-item {
+    background: #fff; border-radius: 14px; padding: 18px 20px;
+    box-shadow: var(--shadow); cursor: pointer; transition: all .18s;
+    border-left: 4px solid var(--primary-light);
+  }
+  .report-item:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-left-color: var(--primary); }
+  .report-item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .report-item-title { font-size: 15px; font-weight: 700; }
+  .report-item-meta { font-size: 12px; color: var(--gray); margin-top: 4px; }
+  .report-item-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .tag {
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    background: var(--primary-xlight); color: var(--primary);
+  }
+  .tag.amber { background: #FFF5EC; color: var(--amber); }
+
+  /* ── 상세 모달 ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(90,58,40,.35);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; padding: 20px;
+  }
+  .modal {
+    background: #fff; border-radius: 20px; max-width: 600px; width: 100%;
+    max-height: 90vh; overflow-y: auto; padding: 28px;
+    box-shadow: 0 20px 60px rgba(90,58,40,.2);
+  }
+  .modal-title { font-size: 18px; font-weight: 800; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  .modal-close { background: var(--cream-d); border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer; font-size: 16px; }
+  .modal-section { margin-bottom: 16px; }
+  .modal-section-label { font-size: 11px; font-weight: 700; color: var(--gray); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+  .modal-section-value { font-size: 14px; color: var(--brown); line-height: 1.6; white-space: pre-wrap; }
+  .modal-photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
+  .modal-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+
+  /* ── 관리자: 계정 관리 ── */
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+  .section-header h3 { font-size: 17px; font-weight: 800; }
+  .user-list { display: flex; flex-direction: column; gap: 10px; }
+  .user-item {
+    background: #fff; border-radius: 12px; padding: 14px 18px;
+    box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center;
+  }
+  .user-item-info h4 { font-size: 14px; font-weight: 700; }
+  .user-item-info p  { font-size: 12px; color: var(--gray); margin-top: 2px; }
+  .user-item-actions { display: flex; gap: 8px; }
+
+  /* ── 대상자 관리 ── */
+  .target-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .target-tag {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--primary-xlight); color: var(--primary);
+    border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+  }
+  .target-tag button { background: none; border: none; cursor: pointer; color: var(--primary); font-size: 13px; line-height: 1; }
+
+  /* ── 계정 생성 모달 ── */
+  .create-form .field { margin-bottom: 14px; }
+
+  /* ── 통계 카드 ── */
+  .stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 24px; }
+  .stat-card {
+    background: #fff; border-radius: 14px; padding: 18px; text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .stat-card .stat-num { font-size: 32px; font-weight: 900; color: var(--primary); }
+  .stat-card .stat-label { font-size: 12px; color: var(--gray); margin-top: 4px; }
+
+  @media (max-width: 600px) {
+    .stat-grid { grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .stat-card .stat-num { font-size: 24px; }
+    .modal-photos { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════ 로그인 ════════════════════ -->
+<div id="page-login">
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="emoji">🍲</span>
+      <h1>맛;하루(맛있는 하루)</h1>
+      <p>공주시정신건강복지센터 · 노인자살예방사업</p>
+    </div>
+    <div class="login-card">
+      <h2>로그인</h2>
+      <div id="login-err" class="login-err hidden"></div>
+      <div class="field">
+        <label class="label">아이디</label>
+        <input type="text" id="login-id" placeholder="아이디를 입력하세요" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="label">비밀번호</label>
+        <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요">
+      </div>
+      <button class="btn btn-primary" style="width:100%;padding:13px;" onclick="doLogin()">로그인</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ 앱 메인 ════════════════════ -->
+<div id="page-app" class="hidden">
+  <nav id="nav">
+    <div class="nav-inner">
+      <div class="nav-logo">🍲 맛;하루(맛있는 하루)</div>
+      <div class="nav-right">
+        <span class="nav-user" id="nav-username"></span>
+        <button class="btn btn-ghost btn-sm" onclick="showMyPwModal()">🔑 비밀번호 변경</button>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()">로그아웃</button>
+      </div>
+    </div>
+  </nav>
+
+  <div id="app-main">
+    <!-- 일반 사용자 탭 -->
+    <div id="user-section">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('write',this)">✏️ 보고서 작성</button>
+        <button class="tab-btn" onclick="switchTab('list',this)">📋 내 보고서</button>
+      </div>
+
+      <!-- 보고서 작성 -->
+      <div id="tab-write">
+        <div class="report-header">
+          <h2>방문 보고서 작성</h2>
+        </div>
+        <div class="card">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field">
+              <label class="label">방문 날짜 <span class="req">*</span></label>
+              <input type="date" id="f-date">
+            </div>
+            <div class="field">
+              <label class="label">방문 시간 <span class="req">*</span></label>
+              <input type="time" id="f-time">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field">
+              <label class="label">대상자 <span class="req">*</span></label>
+              <select id="f-target">
+                <option value="">대상자 선택</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label">회기 <span class="req">*</span></label>
+              <select id="f-session">
+                <option value="">회기 선택</option>
+                <option value="1">1회기 · 차돌박이 순두부찌개</option>
+                <option value="2">2회기 · 서울식 소불고기전골</option>
+                <option value="3">3회기 · 우삼겹 된장찌개</option>
+                <option value="4">4회기 · 논현동 부대찌개</option>
+                <option value="5">5회기 · 대파 고추장 불고기</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">회기 활동 내용 <span class="req">*</span></label>
+            <textarea id="f-activity" placeholder="이번 회기에 진행한 활동 내용을 상세히 입력해주세요."></textarea>
+          </div>
+          <div class="field">
+            <label class="label">대상자 반응 및 소감 <span class="req">*</span></label>
+            <textarea id="f-reaction" placeholder="대상자의 반응, 표정, 발언, 소감 등을 기록해주세요."></textarea>
+          </div>
+          <div class="field">
+            <label class="label">특이사항</label>
+            <textarea id="f-note" placeholder="건강 변화, 정서 상태, 기타 특이사항을 기록해주세요. (없으면 '없음' 입력)" style="min-height:70px;"></textarea>
+          </div>
+
+          <!-- 사진 업로드 -->
+          <div class="field">
+            <label class="label">활동 사진 <span class="req">*</span> <span style="font-weight:400;color:var(--gray);">(최소 2장)</span></label>
+            <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
+              <div style="font-size:32px;">📷</div>
+              <p>클릭하여 사진 추가 (여러 장 선택 가능)</p>
+            </div>
+            <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="addPhotos(this)">
+            <div id="photo-grid" class="photo-grid"></div>
+            <span id="photo-count-badge" class="photo-count need">사진 0장 (최소 2장 필요)</span>
+          </div>
+
+          <!-- 담당자 확인 버튼 -->
+          <div class="submit-box">
+            <p>✅ 모든 내용을 확인하셨나요? 제출 후에는 수정이 불가합니다.</p>
+            <button class="btn btn-primary" style="padding:13px 40px;font-size:15px;" onclick="submitReport()">
+              담당자 확인 · 보고서 제출
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 내 보고서 목록 -->
+      <div id="tab-list" class="hidden">
+        <div class="report-header">
+          <h2>내 보고서 목록</h2>
+        </div>
+        <div id="my-report-list" class="report-list"></div>
+      </div>
+    </div>
+
+    <!-- 관리자 섹션 -->
+    <div id="admin-section" class="hidden">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchAdminTab('dashboard',this)">📊 대시보드</button>
+        <button class="tab-btn" onclick="switchAdminTab('accounts',this)">👤 계정 관리</button>
+        <button class="tab-btn" onclick="switchAdminTab('reports',this)">📋 전체 보고서</button>
+      </div>
+
+      <!-- 대시보드 -->
+      <div id="atab-dashboard">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-num" id="stat-accounts">0</div><div class="stat-label">등록 계정</div></div>
+          <div class="stat-card"><div class="stat-num" id="stat-reports">0</div><div class="stat-label">제출 보고서</div></div>
+          <div class="stat-card"><div class="stat-num" id="stat-targets">0</div><div class="stat-label">총 대상자</div></div>
+        </div>
+        <div class="card">
+          <h3 style="font-size:15px;font-weight:800;margin-bottom:14px;">최근 제출 보고서</h3>
+          <div id="recent-reports" class="report-list"></div>
+        </div>
+      </div>
+
+      <!-- 계정 관리 -->
+      <div id="atab-accounts" class="hidden">
+        <div class="section-header">
+          <h3>계정 관리</h3>
+          <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 계정 생성</button>
+        </div>
+        <div id="user-list" class="user-list"></div>
+      </div>
+
+      <!-- 전체 보고서 -->
+      <div id="atab-reports" class="hidden">
+        <div class="section-header">
+          <h3>전체 보고서</h3>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="filter-user" style="width:auto;padding:7px 12px;" onchange="renderAllReports()">
+              <option value="">전체 계정</option>
+            </select>
+            <button class="btn btn-amber btn-sm" onclick="exportSummaryExcel()">📊 대상자별 요약 엑셀</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportAllReportsExcel()">📋 전체 보고서 엑셀</button>
+          </div>
+        </div>
+
+        <!-- 대상자별 요약 테이블 -->
+        <div id="target-summary-box" style="margin-bottom:20px;"></div>
+
+        <div id="all-report-list" class="report-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════ 보고서 상세 모달 ════ -->
+<div id="report-modal" class="modal-overlay hidden" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-title">
+      <span id="modal-title-text">보고서 상세</span>
+      <button class="modal-close" onclick="document.getElementById('report-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ════ 계정 생성 모달 ════ -->
+<div id="create-modal" class="modal-overlay hidden" onclick="closeCreateModal(event)">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title">
+      <span>계정 생성</span>
+      <button class="modal-close" onclick="document.getElementById('create-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="create-form">
+      <div class="field"><label class="label">이름 <span class="req">*</span></label><input type="text" id="new-name" placeholder="담당자 이름"></div>
+      <div class="field"><label class="label">아이디 <span class="req">*</span></label><input type="text" id="new-id" placeholder="로그인 아이디" autocomplete="off"></div>
+      <div class="field"><label class="label">비밀번호 <span class="req">*</span></label><input type="password" id="new-pw" placeholder="비밀번호"></div>
+      <div class="field">
+        <label class="label">권한</label>
+        <select id="new-role">
+          <option value="user">일반 사용자</option>
+          <option value="admin">관리자</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label">담당 대상자 추가</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="new-target-input" placeholder="대상자 이름 입력 후 추가" style="flex:1;">
+          <button class="btn btn-amber btn-sm" onclick="addNewTarget()">추가</button>
+        </div>
+        <div id="new-target-list" class="target-tags" style="margin-top:10px;"></div>
+      </div>
+      <div id="create-err" class="login-err hidden"></div>
+      <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="createAccount()">계정 생성</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════ 관리자: 타계정 비밀번호 변경 모달 ════ -->
+<div id="admin-pw-modal" class="modal-overlay hidden" onclick="if(event.target.id==='admin-pw-modal')this.classList.add('hidden')">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">
+      <span id="admin-pw-modal-title">비밀번호 변경</span>
+      <button class="modal-close" onclick="document.getElementById('admin-pw-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="field">
+      <label class="label">새 비밀번호 <span class="req">*</span></label>
+      <input type="password" id="admin-new-pw" placeholder="새 비밀번호 (4자 이상)">
+    </div>
+    <div class="field">
+      <label class="label">새 비밀번호 확인 <span class="req">*</span></label>
+      <input type="password" id="admin-new-pw-confirm" placeholder="새 비밀번호 다시 입력">
+    </div>
+    <div id="admin-pw-err" class="login-err hidden"></div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="saveAdminPw()">변경 저장</button>
+  </div>
+</div>
+
+<!-- ════ 본인 비밀번호 변경 모달 ════ -->
+<div id="my-pw-modal" class="modal-overlay hidden" onclick="if(event.target.id==='my-pw-modal')this.classList.add('hidden')">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">
+      <span>내 비밀번호 변경</span>
+      <button class="modal-close" onclick="document.getElementById('my-pw-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="field">
+      <label class="label">현재 비밀번호 <span class="req">*</span></label>
+      <input type="password" id="my-cur-pw" placeholder="현재 비밀번호">
+    </div>
+    <div class="field">
+      <label class="label">새 비밀번호 <span class="req">*</span></label>
+      <input type="password" id="my-new-pw" placeholder="새 비밀번호 (4자 이상)">
+    </div>
+    <div class="field">
+      <label class="label">새 비밀번호 확인 <span class="req">*</span></label>
+      <input type="password" id="my-new-pw-confirm" placeholder="새 비밀번호 다시 입력">
+    </div>
+    <div id="my-pw-err" class="login-err hidden"></div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="saveMyPw()">변경 저장</button>
+  </div>
+</div>
+<div id="target-modal" class="modal-overlay hidden" onclick="closeTargetModal(event)">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">
+      <span id="target-modal-title">대상자 관리</span>
+      <button class="modal-close" onclick="document.getElementById('target-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="field">
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="edit-target-input" placeholder="대상자 이름 입력 후 추가" style="flex:1;">
+        <button class="btn btn-amber btn-sm" onclick="addEditTarget()">추가</button>
+      </div>
+      <div id="edit-target-list" class="target-tags" style="margin-top:10px;"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;padding:11px;margin-top:8px;" onclick="saveTargets()">저장</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  데이터 초기화
+// ══════════════════════════════════════════════
+function initData() {
+  if (!localStorage.getItem('mh_users')) {
+    const users = [
+      { id:'admin', pw:'admin1234', role:'admin', name:'관리자', targets:[] },
+    ];
+    localStorage.setItem('mh_users', JSON.stringify(users));
+  }
+  if (!localStorage.getItem('mh_reports')) {
+    localStorage.setItem('mh_reports', JSON.stringify([]));
+  }
+}
+
+function getUsers()   { return JSON.parse(localStorage.getItem('mh_users') || '[]'); }
+function getReports() { return JSON.parse(localStorage.getItem('mh_reports') || '[]'); }
+function saveUsers(u) { localStorage.setItem('mh_users', JSON.stringify(u)); }
+function saveReports(r){ localStorage.setItem('mh_reports', JSON.stringify(r)); }
+
+let currentUser = null;
+let photos = [];
+let editingUserId = null;
+let newTargets = [];
+
+// ══════════════════════════════════════════════
+//  로그인 / 로그아웃
+// ══════════════════════════════════════════════
+function doLogin() {
+  const id = document.getElementById('login-id').value.trim();
+  const pw = document.getElementById('login-pw').value;
+  const users = getUsers();
+  const user = users.find(u => u.id === id && u.pw === pw);
+  const errEl = document.getElementById('login-err');
+
+  if (!user) {
+    errEl.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  errEl.classList.add('hidden');
+  currentUser = user;
+  document.getElementById('page-login').classList.add('hidden');
+  document.getElementById('page-app').classList.remove('hidden');
+  document.getElementById('nav-username').textContent = `${user.name} (${user.role === 'admin' ? '관리자' : '담당자'})`;
+
+  if (user.role === 'admin') {
+    document.getElementById('admin-section').classList.remove('hidden');
+    document.getElementById('user-section').classList.add('hidden');
+    renderAdminDashboard();
+  } else {
+    document.getElementById('user-section').classList.remove('hidden');
+    document.getElementById('admin-section').classList.add('hidden');
+    loadTargetSelect();
+    setDefaultDateTime();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('page-login') && !document.getElementById('page-login').classList.contains('hidden')) doLogin();
+});
+
+function doLogout() {
+  currentUser = null; photos = [];
+  document.getElementById('page-login').classList.remove('hidden');
+  document.getElementById('page-app').classList.add('hidden');
+  document.getElementById('login-id').value = '';
+  document.getElementById('login-pw').value = '';
+  document.getElementById('login-err').classList.add('hidden');
+}
+
+// ══════════════════════════════════════════════
+//  탭 전환
+// ══════════════════════════════════════════════
+function switchTab(tab, btn) {
+  ['write','list'].forEach(t => document.getElementById(`tab-${t}`).classList.add('hidden'));
+  document.querySelectorAll('#user-section .tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`tab-${tab}`).classList.remove('hidden');
+  btn.classList.add('active');
+  if (tab === 'list') renderMyReports();
+}
+
+function switchAdminTab(tab, btn) {
+  ['dashboard','accounts','reports'].forEach(t => document.getElementById(`atab-${t}`).classList.add('hidden'));
+  document.querySelectorAll('#admin-section .tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`atab-${tab}`).classList.remove('hidden');
+  btn.classList.add('active');
+  if (tab === 'accounts') renderUserList();
+  if (tab === 'reports')  { renderAllReports(); populateFilterUser(); }
+  if (tab === 'dashboard') renderAdminDashboard();
+}
+
+// ══════════════════════════════════════════════
+//  보고서 작성
+// ══════════════════════════════════════════════
+function setDefaultDateTime() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('f-date').value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  document.getElementById('f-time').value = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+function loadTargetSelect() {
+  const sel = document.getElementById('f-target');
+  sel.innerHTML = '<option value="">대상자 선택</option>';
+  const users = getUsers();
+  const user = users.find(u => u.id === currentUser.id);
+  (user?.targets || []).forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    sel.appendChild(opt);
+  });
+}
+
+function addPhotos(input) {
+  const files = Array.from(input.files);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      photos.push(e.target.result);
+      renderPhotoGrid();
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function renderPhotoGrid() {
+  const grid = document.getElementById('photo-grid');
+  grid.innerHTML = '';
+  photos.forEach((src, idx) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${src}"><button class="del-btn" onclick="removePhoto(${idx})">✕</button>`;
+    grid.appendChild(div);
+  });
+  const badge = document.getElementById('photo-count-badge');
+  if (photos.length >= 2) {
+    badge.textContent = `사진 ${photos.length}장 ✓`;
+    badge.className = 'photo-count ok';
+  } else {
+    badge.textContent = `사진 ${photos.length}장 (최소 2장 필요)`;
+    badge.className = 'photo-count need';
+  }
+}
+
+function removePhoto(idx) {
+  photos.splice(idx,1);
+  renderPhotoGrid();
+}
+
+function submitReport() {
+  const date     = document.getElementById('f-date').value;
+  const time     = document.getElementById('f-time').value;
+  const target   = document.getElementById('f-target').value;
+  const session  = document.getElementById('f-session').value;
+  const activity = document.getElementById('f-activity').value.trim();
+  const reaction = document.getElementById('f-reaction').value.trim();
+  const note     = document.getElementById('f-note').value.trim();
+
+  if (!date)     { alert('방문 날짜를 입력해주세요.'); return; }
+  if (!time)     { alert('방문 시간을 입력해주세요.'); return; }
+  if (!target)   { alert('대상자를 선택해주세요.'); return; }
+  if (!session)  { alert('회기를 선택해주세요.'); return; }
+  if (!activity) { alert('회기 활동 내용을 입력해주세요.'); return; }
+  if (!reaction) { alert('대상자 반응 및 소감을 입력해주세요.'); return; }
+  if (photos.length < 2) { alert('사진을 최소 2장 이상 업로드해주세요.'); return; }
+
+  const sessionLabels = {
+    '1':'1회기 · 차돌박이 순두부찌개',
+    '2':'2회기 · 서울식 소불고기전골',
+    '3':'3회기 · 우삼겹 된장찌개',
+    '4':'4회기 · 논현동 부대찌개',
+    '5':'5회기 · 대파 고추장 불고기',
+  };
+
+  const report = {
+    id: Date.now().toString(),
+    userId: currentUser.id,
+    userName: currentUser.name,
+    date, time, target,
+    session: sessionLabels[session],
+    activity, reaction,
+    note: note || '없음',
+    photos: [...photos],
+    createdAt: new Date().toISOString(),
+  };
+
+  const reports = getReports();
+  reports.unshift(report);
+  saveReports(reports);
+
+  // 폼 초기화
+  photos = [];
+  renderPhotoGrid();
+  document.getElementById('f-target').value = '';
+  document.getElementById('f-session').value = '';
+  document.getElementById('f-activity').value = '';
+  document.getElementById('f-reaction').value = '';
+  document.getElementById('f-note').value = '';
+  setDefaultDateTime();
+
+  alert(`✅ 보고서가 제출되었습니다!\n대상자: ${target} | ${sessionLabels[session]}`);
+}
+
+// ══════════════════════════════════════════════
+//  내 보고서 목록
+// ══════════════════════════════════════════════
+function renderMyReports() {
+  const reports = getReports().filter(r => r.userId === currentUser.id);
+  const el = document.getElementById('my-report-list');
+  if (!reports.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:14px;">제출된 보고서가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
+}
+
+function reportItemHTML(r) {
+  return `
+  <div class="report-item" onclick="showReport('${r.id}')">
+    <div class="report-item-header">
+      <div>
+        <div class="report-item-title">📌 ${r.target} · ${r.session}</div>
+        <div class="report-item-meta">📅 ${r.date} ${r.time} &nbsp;|&nbsp; 담당: ${r.userName}</div>
+      </div>
+      <div style="font-size:12px;color:var(--gray);">사진 ${r.photos.length}장</div>
+    </div>
+    <div class="report-item-tags">
+      <span class="tag">${r.session.split('·')[0].trim()}</span>
+      ${r.note !== '없음' ? '<span class="tag amber">⚠ 특이사항</span>' : ''}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════
+//  보고서 상세 모달
+// ══════════════════════════════════════════════
+function showReport(id) {
+  const report = getReports().find(r => r.id === id);
+  if (!report) return;
+  document.getElementById('modal-title-text').textContent = `${report.target} · ${report.session}`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="modal-section"><div class="modal-section-label">방문 날짜</div><div class="modal-section-value">${report.date}</div></div>
+      <div class="modal-section"><div class="modal-section-label">방문 시간</div><div class="modal-section-value">${report.time}</div></div>
+      <div class="modal-section"><div class="modal-section-label">대상자</div><div class="modal-section-value">${report.target}</div></div>
+      <div class="modal-section"><div class="modal-section-label">담당자</div><div class="modal-section-value">${report.userName}</div></div>
+    </div>
+    <div class="modal-section"><div class="modal-section-label">회기 활동 내용</div><div class="modal-section-value">${report.activity}</div></div>
+    <div class="modal-section"><div class="modal-section-label">대상자 반응 및 소감</div><div class="modal-section-value">${report.reaction}</div></div>
+    <div class="modal-section"><div class="modal-section-label">특이사항</div><div class="modal-section-value" style="${report.note !== '없음' ? 'color:var(--red);' : ''}">${report.note}</div></div>
+    <div class="modal-section">
+      <div class="modal-section-label">활동 사진 (${report.photos.length}장)</div>
+      <div class="modal-photos">${report.photos.map(p => `<img src="${p}">`).join('')}</div>
+    </div>
+  `;
+  document.getElementById('report-modal').classList.remove('hidden');
+}
+
+function closeModal(e) {
+  if (e.target.id === 'report-modal') document.getElementById('report-modal').classList.add('hidden');
+}
+
+// ══════════════════════════════════════════════
+//  관리자 대시보드
+// ══════════════════════════════════════════════
+function renderAdminDashboard() {
+  const users = getUsers().filter(u => u.role !== 'admin');
+  const reports = getReports();
+  const allTargets = users.reduce((a,u) => a + (u.targets||[]).length, 0);
+  document.getElementById('stat-accounts').textContent = users.length;
+  document.getElementById('stat-reports').textContent = reports.length;
+  document.getElementById('stat-targets').textContent = allTargets;
+
+  const recent = reports.slice(0,5);
+  const el = document.getElementById('recent-reports');
+  if (!recent.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:24px 0;font-size:14px;">아직 제출된 보고서가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML = recent.map(r => reportItemHTML(r)).join('');
+}
+
+// ══════════════════════════════════════════════
+//  계정 관리
+// ══════════════════════════════════════════════
+function renderUserList() {
+  const users = getUsers();
+  const el = document.getElementById('user-list');
+  el.innerHTML = users.map(u => `
+    <div class="user-item">
+      <div class="user-item-info">
+        <h4>${u.name} &nbsp;<span class="badge ${u.role==='admin'?'badge-admin':'badge-user'}">${u.role==='admin'?'관리자':'담당자'}</span></h4>
+        <p>ID: ${u.id} &nbsp;|&nbsp; 대상자: ${(u.targets||[]).join(', ') || '없음'}</p>
+      </div>
+      <div class="user-item-actions">
+        ${u.id !== 'admin' ? `<button class="btn btn-ghost btn-sm" onclick="openTargetModal('${u.id}')">대상자 편집</button>` : ''}
+        <button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${u.name}')">비밀번호 변경</button>
+        ${u.id !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">삭제</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function deleteUser(id) {
+  if (!confirm('이 계정을 삭제하시겠습니까?')) return;
+  const users = getUsers().filter(u => u.id !== id);
+  saveUsers(users);
+  renderUserList();
+}
+
+// ── 계정 생성 ──
+function showCreateModal() {
+  newTargets = [];
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-id').value = '';
+  document.getElementById('new-pw').value = '';
+  document.getElementById('new-role').value = 'user';
+  document.getElementById('new-target-input').value = '';
+  document.getElementById('new-target-list').innerHTML = '';
+  document.getElementById('create-err').classList.add('hidden');
+  document.getElementById('create-modal').classList.remove('hidden');
+}
+
+function addNewTarget() {
+  const val = document.getElementById('new-target-input').value.trim();
+  if (!val) return;
+  if (newTargets.includes(val)) { alert('이미 추가된 대상자입니다.'); return; }
+  newTargets.push(val);
+  document.getElementById('new-target-input').value = '';
+  renderNewTargetList();
+}
+
+function renderNewTargetList() {
+  document.getElementById('new-target-list').innerHTML = newTargets.map((t,i) =>
+    `<span class="target-tag">${t}<button onclick="newTargets.splice(${i},1);renderNewTargetList()">✕</button></span>`
+  ).join('');
+}
+
+function createAccount() {
+  const name = document.getElementById('new-name').value.trim();
+  const id   = document.getElementById('new-id').value.trim();
+  const pw   = document.getElementById('new-pw').value;
+  const role = document.getElementById('new-role').value;
+  const errEl = document.getElementById('create-err');
+
+  if (!name || !id || !pw) { errEl.textContent = '이름, 아이디, 비밀번호를 모두 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  const users = getUsers();
+  if (users.find(u => u.id === id)) { errEl.textContent = '이미 사용 중인 아이디입니다.'; errEl.classList.remove('hidden'); return; }
+
+  users.push({ id, pw, role, name, targets: [...newTargets] });
+  saveUsers(users);
+  document.getElementById('create-modal').classList.add('hidden');
+  renderUserList();
+  renderAdminDashboard();
+  alert(`✅ 계정이 생성되었습니다.\nID: ${id}`);
+}
+
+function closeCreateModal(e) {
+  if (e.target.id === 'create-modal') document.getElementById('create-modal').classList.add('hidden');
+}
+
+// ── 대상자 편집 ──
+function openTargetModal(userId) {
+  editingUserId = userId;
+  const users = getUsers();
+  const user = users.find(u => u.id === userId);
+  document.getElementById('target-modal-title').textContent = `${user.name} · 대상자 관리`;
+  newTargets = [...(user.targets || [])];
+  document.getElementById('edit-target-input').value = '';
+  renderEditTargetList();
+  document.getElementById('target-modal').classList.remove('hidden');
+}
+
+function addEditTarget() {
+  const val = document.getElementById('edit-target-input').value.trim();
+  if (!val) return;
+  if (newTargets.includes(val)) { alert('이미 추가된 대상자입니다.'); return; }
+  newTargets.push(val);
+  document.getElementById('edit-target-input').value = '';
+  renderEditTargetList();
+}
+
+function renderEditTargetList() {
+  document.getElementById('edit-target-list').innerHTML = newTargets.map((t,i) =>
+    `<span class="target-tag">${t}<button onclick="newTargets.splice(${i},1);renderEditTargetList()">✕</button></span>`
+  ).join('');
+}
+
+function saveTargets() {
+  const users = getUsers();
+  const idx = users.findIndex(u => u.id === editingUserId);
+  if (idx !== -1) { users[idx].targets = [...newTargets]; saveUsers(users); }
+  document.getElementById('target-modal').classList.add('hidden');
+  renderUserList();
+  alert('✅ 대상자 목록이 저장되었습니다.');
+}
+
+function closeTargetModal(e) {
+  if (e.target.id === 'target-modal') document.getElementById('target-modal').classList.add('hidden');
+}
+
+// ══════════════════════════════════════════════
+//  전체 보고서 (관리자)
+// ══════════════════════════════════════════════
+function populateFilterUser() {
+  const sel = document.getElementById('filter-user');
+  const users = getUsers().filter(u => u.role !== 'admin');
+  sel.innerHTML = '<option value="">전체 계정</option>' + users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+}
+
+function renderAllReports() {
+  const filterUser = document.getElementById('filter-user').value;
+  let reports = getReports();
+  if (filterUser) reports = reports.filter(r => r.userId === filterUser);
+  const el = document.getElementById('all-report-list');
+  renderTargetSummary(reports);
+  if (!reports.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:14px;">보고서가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
+}
+
+// ══════════════════════════════════════════════
+//  초기화
+// ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  비밀번호 변경 (관리자 → 타계정)
+// ══════════════════════════════════════════════
+let pwTargetUserId = null;
+
+function openAdminPwModal(userId, userName) {
+  pwTargetUserId = userId;
+  document.getElementById('admin-pw-modal-title').textContent = `${userName} · 비밀번호 변경`;
+  document.getElementById('admin-new-pw').value = '';
+  document.getElementById('admin-new-pw-confirm').value = '';
+  document.getElementById('admin-pw-err').classList.add('hidden');
+  document.getElementById('admin-pw-modal').classList.remove('hidden');
+}
+
+function saveAdminPw() {
+  const pw1 = document.getElementById('admin-new-pw').value;
+  const pw2 = document.getElementById('admin-new-pw-confirm').value;
+  const errEl = document.getElementById('admin-pw-err');
+  if (!pw1) { errEl.textContent = '새 비밀번호를 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (pw1.length < 4) { errEl.textContent = '비밀번호는 4자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return; }
+  if (pw1 !== pw2) { errEl.textContent = '비밀번호가 일치하지 않습니다.'; errEl.classList.remove('hidden'); return; }
+  const users = getUsers();
+  const idx = users.findIndex(u => u.id === pwTargetUserId);
+  if (idx !== -1) { users[idx].pw = pw1; saveUsers(users); }
+  document.getElementById('admin-pw-modal').classList.add('hidden');
+  alert('✅ 비밀번호가 변경되었습니다.');
+}
+
+// ══════════════════════════════════════════════
+//  비밀번호 변경 (본인)
+// ══════════════════════════════════════════════
+function showMyPwModal() {
+  document.getElementById('my-cur-pw').value = '';
+  document.getElementById('my-new-pw').value = '';
+  document.getElementById('my-new-pw-confirm').value = '';
+  document.getElementById('my-pw-err').classList.add('hidden');
+  document.getElementById('my-pw-modal').classList.remove('hidden');
+}
+
+function saveMyPw() {
+  const curPw  = document.getElementById('my-cur-pw').value;
+  const newPw  = document.getElementById('my-new-pw').value;
+  const newPw2 = document.getElementById('my-new-pw-confirm').value;
+  const errEl  = document.getElementById('my-pw-err');
+  const users  = getUsers();
+  const user   = users.find(u => u.id === currentUser.id);
+
+  if (!curPw)  { errEl.textContent = '현재 비밀번호를 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (user.pw !== curPw) { errEl.textContent = '현재 비밀번호가 올바르지 않습니다.'; errEl.classList.remove('hidden'); return; }
+  if (!newPw)  { errEl.textContent = '새 비밀번호를 입력해주세요.'; errEl.classList.remove('hidden'); return; }
+  if (newPw.length < 4) { errEl.textContent = '비밀번호는 4자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return; }
+  if (newPw !== newPw2) { errEl.textContent = '새 비밀번호가 일치하지 않습니다.'; errEl.classList.remove('hidden'); return; }
+
+  const idx = users.findIndex(u => u.id === currentUser.id);
+  users[idx].pw = newPw;
+  currentUser.pw = newPw;
+  saveUsers(users);
+  document.getElementById('my-pw-modal').classList.add('hidden');
+  alert('✅ 비밀번호가 변경되었습니다.\n다음 로그인부터 새 비밀번호를 사용하세요.');
+}
+
+// ══════════════════════════════════════════════
+//  대상자별 요약 테이블 렌더
+// ══════════════════════════════════════════════
+function buildTargetSummary(reports) {
+  // { 대상자명: { sessions: Set, hasNote: bool, latestDate, count } }
+  const map = {};
+  reports.forEach(r => {
+    if (!map[r.target]) map[r.target] = { sessions: new Set(), notes: [], count: 0, latestDate: '', userName: r.userName };
+    map[r.target].sessions.add(r.session);
+    map[r.target].count++;
+    if (r.note && r.note !== '없음') map[r.target].notes.push(r.note);
+    if (!map[r.target].latestDate || r.date > map[r.target].latestDate) map[r.target].latestDate = r.date;
+  });
+  return map;
+}
+
+function renderTargetSummary(reports) {
+  const box = document.getElementById('target-summary-box');
+  if (!reports.length) { box.innerHTML = ''; return; }
+  const map = buildTargetSummary(reports);
+  const rows = Object.entries(map).map(([name, d]) => {
+    const sessionList = [...d.sessions].map(s => s.split('·')[0].trim()).join(', ');
+    const hasNote = d.notes.length > 0;
+    return `
+      <tr>
+        <td style="padding:10px 14px;font-weight:700;color:var(--brown);">${name}</td>
+        <td style="padding:10px 14px;text-align:center;">${d.count}회</td>
+        <td style="padding:10px 14px;font-size:12px;color:var(--gray);">${sessionList}</td>
+        <td style="padding:10px 14px;text-align:center;">
+          ${hasNote
+            ? `<span style="background:#FEF4F0;color:var(--red);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠ ${d.notes.length}건</span>`
+            : `<span style="background:#EEF6EC;color:var(--green);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">없음</span>`}
+        </td>
+        <td style="padding:10px 14px;text-align:center;font-size:13px;color:var(--gray);">${d.latestDate}</td>
+        <td style="padding:10px 14px;font-size:13px;color:var(--gray);">${d.userName}</td>
+      </tr>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="background:var(--primary);padding:12px 18px;">
+        <span style="font-size:14px;font-weight:800;color:#fff;">📊 대상자별 진행 현황</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:var(--cream-d);">
+              <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">대상자</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">총 방문</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">진행 회기</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">특이사항</th>
+              <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">최근 방문일</th>
+              <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">담당자</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════
+//  엑셀 내보내기 – 대상자별 요약
+// ══════════════════════════════════════════════
+function exportSummaryExcel() {
+  const filterUser = document.getElementById('filter-user').value;
+  let reports = getReports();
+  if (filterUser) reports = reports.filter(r => r.userId === filterUser);
+  if (!reports.length) { alert('내보낼 보고서가 없습니다.'); return; }
+
+  const map = buildTargetSummary(reports);
+
+  // 시트1: 대상자별 요약
+  const summaryData = [
+    ['대상자', '총 방문 횟수', '완료 회기', '특이사항 건수', '특이사항 내용', '최근 방문일', '담당자']
+  ];
+  Object.entries(map).forEach(([name, d]) => {
+    const sessionList = [...d.sessions].map(s => s.split('·')[0].trim()).join(', ');
+    summaryData.push([
+      name,
+      d.count,
+      sessionList,
+      d.notes.length,
+      d.notes.join(' / ') || '없음',
+      d.latestDate,
+      d.userName
+    ]);
+  });
+
+  // 시트2: 회기별 상세
+  const detailData = [
+    ['대상자', '담당자', '방문날짜', '방문시간', '회기', '활동내용', '반응및소감', '특이사항']
+  ];
+  reports.forEach(r => {
+    detailData.push([
+      r.target, r.userName, r.date, r.time,
+      r.session, r.activity, r.reaction, r.note
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+
+  const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
+  ws1['!cols'] = [14,12,22,12,40,14,12].map(w => ({ wch: w }));
+  // 헤더 스타일
+  XLSX.utils.book_append_sheet(wb, ws1, '대상자별 요약');
+
+  const ws2 = XLSX.utils.aoa_to_sheet(detailData);
+  ws2['!cols'] = [12,10,12,8,22,30,30,20].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws2, '회기별 상세');
+
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `맛있는하루_대상자현황_${dateStr}.xlsx`);
+}
+
+// ══════════════════════════════════════════════
+//  엑셀 내보내기 – 전체 보고서
+// ══════════════════════════════════════════════
+function exportAllReportsExcel() {
+  const filterUser = document.getElementById('filter-user').value;
+  let reports = getReports();
+  if (filterUser) reports = reports.filter(r => r.userId === filterUser);
+  if (!reports.length) { alert('내보낼 보고서가 없습니다.'); return; }
+
+  const data = [
+    ['번호', '대상자', '담당자', '방문날짜', '방문시간', '회기', '활동내용', '대상자반응및소감', '특이사항', '사진수', '제출일시']
+  ];
+  reports.forEach((r, i) => {
+    data.push([
+      i + 1, r.target, r.userName, r.date, r.time,
+      r.session, r.activity, r.reaction, r.note,
+      r.photos.length,
+      new Date(r.createdAt).toLocaleString('ko-KR')
+    ]);
+  });
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [5,12,10,12,8,22,30,30,20,6,18].map(w => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws, '전체보고서');
+
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb, `맛있는하루_전체보고서_${dateStr}.xlsx`);
+}
+
+initData();
+</script>
+</body>
+</html>
