@@ -379,41 +379,40 @@
 </div>
 
 <script>
-window.onload = function() {
-
 // ══════════════════════════════════════════════
 //  Firebase REST API 설정 (SDK 없이 fetch로 직접 통신)
 // ══════════════════════════════════════════════
 const DB_URL = 'https://mat-haru-default-rtdb.firebaseio.com';
 
+const FETCH_OPTS = {
+  mode: 'cors',
+  headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
+};
+
 // GET: 단일 노드 읽기
 async function fbGet(path) {
-  const res = await fetch(`${DB_URL}/${path}.json`);
-  if (!res.ok) throw new Error('Firebase GET 실패: ' + path);
+  const res = await fetch(`${DB_URL}/${path}.json`, { ...FETCH_OPTS, method: 'GET' });
+  if (!res.ok) throw new Error('GET 실패 ' + res.status);
   return await res.json();
 }
 // PUT: 노드 덮어쓰기
 async function fbSet(path, data) {
   const res = await fetch(`${DB_URL}/${path}.json`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    ...FETCH_OPTS, method: 'PUT', body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Firebase SET 실패: ' + path);
+  if (!res.ok) throw new Error('SET 실패 ' + res.status);
   return await res.json();
 }
 // DELETE: 노드 삭제
 async function fbDelete(path) {
-  await fetch(`${DB_URL}/${path}.json`, { method: 'DELETE' });
+  await fetch(`${DB_URL}/${path}.json`, { ...FETCH_OPTS, method: 'DELETE' });
 }
 // PATCH: 부분 업데이트
 async function fbPatch(path, data) {
   const res = await fetch(`${DB_URL}/${path}.json`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    ...FETCH_OPTS, method: 'PATCH', body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Firebase PATCH 실패: ' + path);
+  if (!res.ok) throw new Error('PATCH 실패 ' + res.status);
   return await res.json();
 }
 
@@ -441,7 +440,7 @@ async function ensureAdmin() {
   const existing = await fbGet('users/admin');
   if (!existing) {
     await fbSet('users/admin', {
-      id:'admin', pw:'admin1234', role:'admin', name:'관리자', targets:[]
+      id:'admin', pw:'1234', role:'admin', name:'관리자', targets:[]
     });
   }
 }
@@ -461,11 +460,47 @@ let allReportsCache = [];
 //  앱 시작
 // ══════════════════════════════════════════════
 async function startApp() {
-  await ensureAdmin();
+  try {
+    await ensureAdmin();
+  } catch(e) {
+    console.warn('초기화 경고:', e.message);
+  }
+
+  // 세션 복원 시도
+  const saved = sessionStorage.getItem('mh_user');
+  if (saved) {
+    try {
+      const userData = JSON.parse(saved);
+      // DB에서 최신 정보 다시 확인
+      const latest = await fbGet('users/' + userData.id);
+      if (latest && latest.pw === userData.pw) {
+        currentUser = latest;
+        sessionStorage.setItem('mh_user', JSON.stringify(latest));
+        document.getElementById('loading-screen').classList.add('hidden');
+        document.getElementById('page-app').classList.remove('hidden');
+        document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
+        if (currentUser.role === 'admin') {
+          document.getElementById('admin-section').classList.remove('hidden');
+          document.getElementById('user-section').classList.add('hidden');
+          renderAdminDashboard();
+        } else {
+          document.getElementById('user-section').classList.remove('hidden');
+          document.getElementById('admin-section').classList.add('hidden');
+          loadTargetSelect();
+          setDefaultDateTime();
+        }
+        return;
+      }
+    } catch(e) {
+      console.warn('세션 복원 실패:', e.message);
+    }
+    sessionStorage.removeItem('mh_user');
+  }
+
   document.getElementById('loading-screen').classList.add('hidden');
   document.getElementById('page-login').classList.remove('hidden');
 }
-startApp();
+document.addEventListener('DOMContentLoaded', startApp);
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !document.getElementById('page-login').classList.contains('hidden')) doLogin();
@@ -480,32 +515,40 @@ async function doLogin() {
   const errEl = document.getElementById('login-err');
   if (!id || !pw) { errEl.textContent = '아이디와 비밀번호를 입력해주세요.'; errEl.classList.remove('hidden'); return; }
 
-  const snap = await fbGet('users/' + id);
-  if (!snap || snap.pw !== pw) {
-    errEl.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
-    errEl.classList.remove('hidden'); return;
-  }
-  errEl.classList.add('hidden');
-  currentUser = snap;
+  try {
+    const userData = await fbGet('users/' + id);
+    if (!userData || userData.pw !== pw) {
+      errEl.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
+      errEl.classList.remove('hidden'); return;
+    }
+    errEl.classList.add('hidden');
+    currentUser = userData;
+    sessionStorage.setItem('mh_user', JSON.stringify(currentUser)); // 세션 저장
 
-  document.getElementById('page-login').classList.add('hidden');
-  document.getElementById('page-app').classList.remove('hidden');
-  document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
+    document.getElementById('page-login').classList.add('hidden');
+    document.getElementById('page-app').classList.remove('hidden');
+    document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
 
-  if (currentUser.role === 'admin') {
-    document.getElementById('admin-section').classList.remove('hidden');
-    document.getElementById('user-section').classList.add('hidden');
-    renderAdminDashboard();
-  } else {
-    document.getElementById('user-section').classList.remove('hidden');
-    document.getElementById('admin-section').classList.add('hidden');
-    loadTargetSelect();
-    setDefaultDateTime();
+    if (currentUser.role === 'admin') {
+      document.getElementById('admin-section').classList.remove('hidden');
+      document.getElementById('user-section').classList.add('hidden');
+      renderAdminDashboard();
+    } else {
+      document.getElementById('user-section').classList.remove('hidden');
+      document.getElementById('admin-section').classList.add('hidden');
+      loadTargetSelect();
+      setDefaultDateTime();
+    }
+  } catch(e) {
+    errEl.textContent = '서버 연결 오류입니다. 잠시 후 다시 시도해주세요.';
+    errEl.classList.remove('hidden');
+    console.error('로그인 오류:', e);
   }
 }
 
 function doLogout() {
   currentUser = null; photos = [];
+  sessionStorage.removeItem('mh_user'); // 세션 삭제
   document.getElementById('page-login').classList.remove('hidden');
   document.getElementById('page-app').classList.add('hidden');
   document.getElementById('login-id').value = '';
@@ -555,20 +598,19 @@ async function loadTargetSelect() {
 
 function addPhotos(input) {
   const files = Array.from(input.files);
-  // 이미지 리사이즈 후 저장 (용량 절약)
   files.forEach(file => {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const max = 800;
+        const max = 600; // 800→600으로 축소
         let w = img.width, h = img.height;
-        if (w > max) { h = h * max / w; w = max; }
-        if (h > max) { w = w * max / h; h = max; }
+        if (w > max) { h = Math.round(h * max / w); w = max; }
+        if (h > max) { w = Math.round(w * max / h); h = max; }
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        photos.push(canvas.toDataURL('image/jpeg', 0.7));
+        photos.push(canvas.toDataURL('image/jpeg', 0.5)); // 0.7→0.5로 품질 낮춤
         renderPhotoGrid();
       };
       img.src = e.target.result;
@@ -627,15 +669,25 @@ async function submitReport() {
     createdAt: new Date().toISOString()
   };
 
-  await saveReport(report);
-  photos = []; renderPhotoGrid();
-  document.getElementById('f-target').value = '';
-  document.getElementById('f-session').value = '';
-  document.getElementById('f-activity').value = '';
-  document.getElementById('f-reaction').value = '';
-  document.getElementById('f-note').value = '';
-  setDefaultDateTime();
-  alert(`✅ 보고서가 제출되었습니다!\n대상자: ${target} | ${sessionLabels[session]}`);
+  try {
+    const btn = document.querySelector('.submit-box .btn');
+    if (btn) { btn.disabled = true; btn.textContent = '제출 중...'; }
+    await saveReport(report);
+    photos = []; renderPhotoGrid();
+    document.getElementById('f-target').value = '';
+    document.getElementById('f-session').value = '';
+    document.getElementById('f-activity').value = '';
+    document.getElementById('f-reaction').value = '';
+    document.getElementById('f-note').value = '';
+    setDefaultDateTime();
+    if (btn) { btn.disabled = false; btn.textContent = '담당자 확인 · 보고서 제출'; }
+    alert(`✅ 보고서가 제출되었습니다!\n대상자: ${target} | ${sessionLabels[session]}`);
+  } catch(e) {
+    const btn = document.querySelector('.submit-box .btn');
+    if (btn) { btn.disabled = false; btn.textContent = '담당자 확인 · 보고서 제출'; }
+    alert('제출 중 오류가 발생했습니다. 사진 용량을 줄이거나 잠시 후 다시 시도해주세요.\n오류: ' + e.message);
+    console.error('제출 오류:', e);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -967,8 +1019,6 @@ async function exportAllReportsExcel() {
   const d=new Date(), ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb,`맛있는하루_전체보고서_${ds}.xlsx`);
 }
-
-}; // window.onload 끝
 </script>
 </body>
 </html>
