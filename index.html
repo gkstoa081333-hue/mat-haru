@@ -479,6 +479,13 @@ function loadSession(){
 function clearSession(){
   try{ localStorage.removeItem('mh_user'); sessionStorage.removeItem('mh_user'); }catch(e){}
 }
+// 현재 저장 위치(local/session)를 유지하며 currentUser 최신값으로 세션 갱신
+function refreshSession(){
+  if(!currentUser) return;
+  let inLocal = false;
+  try{ inLocal = !!localStorage.getItem('mh_user'); }catch(e){}
+  saveSession(currentUser, inLocal);
+}
 
 // ── DB 헬퍼 (기존 인터페이스 유지) ──
 async function getUsers() {
@@ -539,13 +546,22 @@ async function startApp() {
   const saved = loadSession();
   const fromLocal = (() => { try { return !!localStorage.getItem('mh_user'); } catch(e){ return false; } })();
   if (saved) {
-    try {
-      const userData = JSON.parse(saved);
-      // DB에서 최신 정보 다시 확인
-      const latest = await fbGet('users/' + userData.id);
-      if (latest && latest.pw === userData.pw) {
-        currentUser = latest;
-        saveSession(latest, fromLocal); // 있던 저장소에 최신정보로 갱신
+    let userData = null;
+    try { userData = JSON.parse(saved); } catch(e) { userData = null; }
+    if (userData && userData.id) {
+      let latest = null, serverOk = true;
+      try { latest = await fbGet('users/' + userData.id); }
+      catch(e){ serverOk = false; console.warn('자동로그인: 서버 확인 실패 → 저장된 정보로 로그인:', e.message); }
+
+      // 계정이 삭제됐거나(서버 확인 성공+없음) 비번이 바뀐 경우에만 해제.
+      // 네트워크 일시 오류(serverOk=false)에는 저장 정보로 로그인 유지.
+      if (serverOk && latest === null) {
+        clearSession();
+      } else if (serverOk && latest && latest.pw !== userData.pw) {
+        clearSession();
+      } else {
+        currentUser = latest || userData;       // 서버 응답 없으면 저장본 사용
+        saveSession(currentUser, fromLocal);     // 최신 정보로 갱신
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('page-app').classList.remove('hidden');
         document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
@@ -561,10 +577,9 @@ async function startApp() {
         }
         return;
       }
-    } catch(e) {
-      console.warn('세션 복원 실패:', e.message);
+    } else {
+      clearSession();
     }
-    clearSession();
   }
 
   document.getElementById('loading-screen').classList.add('hidden');
@@ -1245,6 +1260,7 @@ async function saveMyPw() {
   if (newPw!==newPw2)  { errEl.textContent='새 비밀번호가 일치하지 않습니다.'; errEl.classList.remove('hidden'); return; }
   await fbSet('users/'+currentUser.id+'/pw', newPw);
   currentUser.pw = newPw;
+  refreshSession(); // 자동로그인 정보도 새 비번으로 갱신
   document.getElementById('my-pw-modal').classList.add('hidden');
   alert('✅ 비밀번호가 변경되었습니다.');
 }
