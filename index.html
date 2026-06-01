@@ -19,7 +19,7 @@
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Noto Sans KR',sans-serif;background:var(--cream);color:var(--brown);min-height:100vh;}
   .hidden{display:none!important;}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border:none;border-radius:10px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:all .18s;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border:none;border-radius:10px;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:all .18s;}
   .btn-primary{background:var(--primary);color:#fff;}
   .btn-primary:hover{background:#d06a3f;transform:translateY(-1px);box-shadow:var(--shadow);}
   .btn-amber{background:var(--amber);color:#fff;}
@@ -28,112 +28,130 @@
   .btn-ghost:hover{background:var(--primary-xlight);}
   .btn-danger{background:var(--red);color:#fff;}
   .btn-danger:hover{background:#b84040;}
-  .btn-sm{padding:6px 14px;font-size:12px;border-radius:8px;}
+  .btn-sm{padding:6px 14px;font-size:14px;border-radius:8px;}
   .btn:disabled{opacity:.45;cursor:not-allowed;transform:none!important;}
-  input,textarea,select{width:100%;padding:10px 14px;border:1.5px solid var(--sand);border-radius:10px;font-family:inherit;font-size:14px;color:var(--brown);background:#fff;outline:none;transition:border .18s;}
+  input,textarea,select{width:100%;padding:13px 16px;border:1.5px solid var(--sand);border-radius:10px;font-family:inherit;font-size:16px;color:var(--brown);background:#fff;outline:none;transition:border .18s;}
   input:focus,textarea:focus,select:focus{border-color:var(--primary);}
   textarea{resize:vertical;min-height:90px;line-height:1.6;}
-  .label{font-size:13px;font-weight:600;color:var(--brown);margin-bottom:6px;display:block;}
+  .label{font-size:15px;font-weight:600;color:var(--brown);margin-bottom:6px;display:block;}
   .label span.req{color:var(--primary);margin-left:2px;}
   .field{margin-bottom:18px;}
+  /* 선택 칩 (상태 라디오 / 체크리스트) */
+  .choice-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+  .choice{position:relative;}
+  .choice input{position:absolute;opacity:0;width:0;height:0;}
+  .choice label{display:inline-block;margin:0;padding:10px 18px;border:1.5px solid var(--sand);border-radius:24px;font-size:16px;font-weight:600;color:var(--gray);background:#fff;cursor:pointer;transition:all .15s;}
+  .choice label:hover{border-color:var(--primary-light);}
+  .choice input:checked + label{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .choice.warn input:checked + label{background:var(--red);border-color:var(--red);color:#fff;}
+  .choice input:focus-visible + label{outline:2px solid var(--primary);outline-offset:2px;}
+  .risk-note{background:#FEECEC;border:1.5px solid var(--red);border-radius:10px;padding:11px 15px;font-size:15px;color:var(--red);font-weight:700;margin-top:12px;}
+  .answer-tag{display:inline-block;padding:5px 13px;border-radius:20px;font-size:15px;font-weight:700;margin:3px 4px 3px 0;background:var(--primary-xlight);color:var(--primary);}
+  .answer-tag.warn{background:#FEECEC;color:var(--red);}
+  .answer-tag.none{background:#EEF6EC;color:var(--green);}
   .card{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:24px;}
-  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;}
+  .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;}
   .badge-admin{background:var(--primary-xlight);color:var(--primary);}
   .badge-user{background:#EEF6EC;color:var(--green);}
 
   /* 로딩 */
   #loading-screen{position:fixed;inset:0;background:linear-gradient(135deg,var(--primary-xlight),var(--cream));display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;}
   #loading-screen .spin{width:48px;height:48px;border:4px solid var(--sand);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
-  #loading-screen p{font-size:14px;color:var(--gray);font-weight:500;}
+  #loading-screen p{font-size:16px;color:var(--gray);font-weight:500;}
   @keyframes spin{to{transform:rotate(360deg);}}
 
   /* 로그인 */
   #page-login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--primary-xlight) 0%,var(--cream) 60%);}
   .login-box{width:100%;max-width:400px;padding:20px;}
   .login-logo{text-align:center;margin-bottom:32px;}
-  .login-logo .emoji{font-size:48px;display:block;margin-bottom:8px;}
-  .login-logo h1{font-size:32px;font-weight:900;color:var(--primary);}
-  .login-logo p{font-size:13px;color:var(--gray);margin-top:4px;}
+  .login-logo .emoji{font-size:52px;display:block;margin-bottom:8px;}
+  .login-logo h1{font-size:36px;font-weight:900;color:var(--primary);}
+  .login-logo p{font-size:15px;color:var(--gray);margin-top:4px;}
   .login-card{background:#fff;border-radius:20px;padding:32px;box-shadow:var(--shadow-lg);}
-  .login-card h2{font-size:17px;font-weight:700;margin-bottom:24px;}
-  .login-err{background:#FEF4F0;color:var(--red);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;}
+  .login-card h2{font-size:19px;font-weight:700;margin-bottom:24px;}
+  .login-err{background:#FEF4F0;color:var(--red);border-radius:8px;padding:10px 14px;font-size:15px;margin-bottom:14px;}
 
   /* 네비 */
   #nav{background:#fff;box-shadow:0 2px 12px rgba(200,120,80,.10);position:sticky;top:0;z-index:100;}
   .nav-inner{max-width:960px;margin:0 auto;padding:10px 20px;display:flex;flex-direction:column;gap:8px;}
   .nav-row1{display:flex;align-items:center;justify-content:space-between;}
   .nav-row2{display:flex;align-items:center;justify-content:space-between;padding-bottom:4px;}
-  .nav-logo{font-size:20px;font-weight:900;color:var(--primary);display:flex;align-items:center;gap:8px;line-height:1.2;}
-  .nav-user{font-size:13px;color:var(--gray);font-weight:500;}
+  .nav-logo{font-size:23px;font-weight:900;color:var(--primary);display:flex;align-items:center;gap:8px;line-height:1.2;}
+  .nav-user{font-size:15px;color:var(--gray);font-weight:500;}
   .nav-actions{display:flex;gap:8px;}
 
   /* 탭 */
   .tabs{display:flex;gap:4px;margin-bottom:24px;background:var(--cream-d);padding:4px;border-radius:12px;}
-  .tab-btn{flex:1;padding:9px;border:none;border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;background:transparent;color:var(--gray);transition:all .18s;}
+  .tab-btn{flex:1;padding:9px;border:none;border-radius:9px;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;background:transparent;color:var(--gray);transition:all .18s;}
   .tab-btn.active{background:#fff;color:var(--primary);box-shadow:var(--shadow);}
 
   /* 메인 */
   #app-main{max-width:960px;margin:0 auto;padding:28px 20px;}
   .report-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
-  .report-header h2{font-size:20px;font-weight:800;}
+  .report-header h2{font-size:23px;font-weight:800;}
 
   /* 사진 업로드 */
   .photo-upload-area{border:2px dashed var(--primary-light);border-radius:12px;padding:20px;text-align:center;cursor:pointer;background:var(--primary-xlight);transition:all .18s;}
   .photo-upload-area:hover{border-color:var(--primary);background:#fde8d8;}
-  .photo-upload-area p{font-size:13px;color:var(--gray);margin-top:6px;}
+  .photo-upload-area p{font-size:15px;color:var(--gray);margin-top:6px;}
   .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:14px;}
   .photo-thumb{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--sand);}
   .photo-thumb img{width:100%;height:100%;object-fit:cover;}
-  .photo-thumb .del-btn{position:absolute;top:4px;right:4px;background:rgba(200,80,80,.85);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:12px;line-height:1;}
-  .photo-count{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-top:8px;}
-  .photo-count.ok{background:#EEF6EC;color:var(--green);}
-  .photo-count.need{background:var(--primary-xlight);color:var(--primary);}
+  .photo-thumb .del-btn{position:absolute;top:4px;right:4px;background:rgba(200,80,80,.85);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1;}
+  .photo-count{display:inline-block;padding:6px 16px;border-radius:20px;font-size:16px;font-weight:700;margin-top:10px;}
+  .photo-count.ok{background:#EEF6EC;color:var(--green);font-size:17px;}
+  .photo-count.need{display:flex;align-items:center;gap:8px;width:100%;justify-content:center;background:#FEECEC;color:var(--red);border:2px solid var(--red);border-radius:12px;padding:14px 18px;font-size:19px;font-weight:900;animation:needPulse 1.4s ease-in-out infinite;}
+  @keyframes needPulse{0%,100%{box-shadow:0 0 0 0 rgba(200,80,80,.45);}50%{box-shadow:0 0 0 8px rgba(200,80,80,0);}}
   .submit-box{background:var(--primary-xlight);border-radius:14px;padding:20px;margin-top:8px;text-align:center;}
-  .submit-box p{font-size:13px;color:var(--gray);margin-bottom:14px;}
+  .submit-box p{font-size:15px;color:var(--gray);margin-bottom:14px;}
 
   /* 보고서 목록 */
   .report-list{display:flex;flex-direction:column;gap:14px;}
   .report-item{background:#fff;border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);cursor:pointer;transition:all .18s;border-left:4px solid var(--primary-light);}
   .report-item:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg);border-left-color:var(--primary);}
   .report-item-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
-  .report-item-title{font-size:15px;font-weight:700;}
-  .report-item-meta{font-size:12px;color:var(--gray);margin-top:4px;}
+  .report-item-title{font-size:17px;font-weight:700;}
+  .report-item-meta{font-size:14px;color:var(--gray);margin-top:4px;}
   .report-item-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
-  .tag{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--primary-xlight);color:var(--primary);}
+  .tag{padding:3px 10px;border-radius:20px;font-size:13px;font-weight:600;background:var(--primary-xlight);color:var(--primary);}
   .tag.amber{background:#FFF5EC;color:var(--amber);}
 
   /* 모달 */
   .modal-overlay{position:fixed;inset:0;background:rgba(90,58,40,.35);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;}
   .modal{background:#fff;border-radius:20px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;padding:28px;box-shadow:0 20px 60px rgba(90,58,40,.2);}
-  .modal-title{font-size:18px;font-weight:800;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;}
-  .modal-close{background:var(--cream-d);border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;}
+  .modal-title{font-size:20px;font-weight:800;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;}
+  .modal-close{background:var(--cream-d);border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:18px;}
   .modal-section{margin-bottom:16px;}
-  .modal-section-label{font-size:11px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
-  .modal-section-value{font-size:14px;color:var(--brown);line-height:1.6;white-space:pre-wrap;}
+  .modal-section-label{font-size:13px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+  .modal-section-value{font-size:16px;color:var(--brown);line-height:1.6;white-space:pre-wrap;}
   .modal-photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px;}
-  .modal-photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;}
+  .modal-photos img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:zoom-in;}
+  .modal-photo-item{position:relative;}
+  .modal-photo-item .dl-one{position:absolute;bottom:6px;right:6px;background:rgba(90,58,40,.85);color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .modal-photo-item .dl-one:hover{background:var(--primary);}
+  .photos-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;}
 
   /* 계정 관리 */
   .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
-  .section-header h3{font-size:17px;font-weight:800;}
+  .section-header h3{font-size:19px;font-weight:800;}
   .user-list{display:flex;flex-direction:column;gap:10px;}
   .user-item{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center;}
-  .user-item-info h4{font-size:14px;font-weight:700;}
-  .user-item-info p{font-size:12px;color:var(--gray);margin-top:2px;}
+  .user-item-info h4{font-size:16px;font-weight:700;}
+  .user-item-info p{font-size:14px;color:var(--gray);margin-top:2px;}
   .user-item-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .target-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
-  .target-tag{display:flex;align-items:center;gap:6px;background:var(--primary-xlight);color:var(--primary);border-radius:20px;padding:4px 12px;font-size:12px;font-weight:600;}
-  .target-tag button{background:none;border:none;cursor:pointer;color:var(--primary);font-size:13px;line-height:1;}
+  .target-tag{display:flex;align-items:center;gap:6px;background:var(--primary-xlight);color:var(--primary);border-radius:20px;padding:4px 12px;font-size:14px;font-weight:600;}
+  .target-tag button{background:none;border:none;cursor:pointer;color:var(--primary);font-size:15px;line-height:1;}
 
   /* 통계 */
   .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px;}
   .stat-card{background:#fff;border-radius:14px;padding:18px;text-align:center;box-shadow:var(--shadow);}
-  .stat-card .stat-num{font-size:32px;font-weight:900;color:var(--primary);}
-  .stat-card .stat-label{font-size:12px;color:var(--gray);margin-top:4px;}
+  .stat-card .stat-num{font-size:36px;font-weight:900;color:var(--primary);}
+  .stat-card .stat-label{font-size:14px;color:var(--gray);margin-top:4px;}
 
   @media(max-width:600px){
     .stat-grid{gap:8px;}
-    .stat-card .stat-num{font-size:24px;}
+    .stat-card .stat-num{font-size:27px;}
     .modal-photos{grid-template-columns:repeat(2,1fr);}
     .user-item{flex-direction:column;align-items:flex-start;gap:10px;}
   }
@@ -166,6 +184,10 @@
         <label class="label">비밀번호</label>
         <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요">
       </div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:var(--gray);margin-bottom:18px;cursor:pointer;user-select:none;">
+        <input type="checkbox" id="login-remember" checked style="width:18px;height:18px;flex:none;cursor:pointer;">
+        자동 로그인 (이 기기에서 로그인 유지)
+      </label>
       <button class="btn btn-primary" style="width:100%;padding:13px;" onclick="doLogin()">로그인</button>
     </div>
   </div>
@@ -180,7 +202,7 @@
         <span class="nav-user" id="nav-username"></span>
       </div>
       <div class="nav-row2">
-        <span style="font-size:12px;color:var(--gray);">공주시정신건강복지센터</span>
+        <span style="font-size:14px;color:var(--gray);">공주시정신건강복지센터</span>
         <div class="nav-actions">
           <button class="btn btn-ghost btn-sm" onclick="showMyPwModal()">🔑 비밀번호 변경</button>
           <button class="btn btn-ghost btn-sm" onclick="doLogout()">로그아웃</button>
@@ -223,20 +245,45 @@
           </div>
           <div class="field"><label class="label">회기 활동 내용 <span class="req">*</span></label><textarea id="f-activity" placeholder="이번 회기에 진행한 활동 내용을 상세히 입력해주세요."></textarea></div>
           <div class="field"><label class="label">대상자 반응 및 소감 <span class="req">*</span></label><textarea id="f-reaction" placeholder="대상자의 반응, 표정, 발언, 소감 등을 기록해주세요."></textarea></div>
+          <div class="field">
+            <label class="label">대상자의 전반적인 상태는 어떠했나요? <span class="req">*</span></label>
+            <div class="choice-group">
+              <span class="choice"><input type="radio" name="f-status" id="f-status-0" value="매우 양호"><label for="f-status-0">매우 양호</label></span>
+              <span class="choice"><input type="radio" name="f-status" id="f-status-1" value="양호"><label for="f-status-1">양호</label></span>
+              <span class="choice"><input type="radio" name="f-status" id="f-status-2" value="보통"><label for="f-status-2">보통</label></span>
+              <span class="choice warn"><input type="radio" name="f-status" id="f-status-3" value="다소 어려움"><label for="f-status-3">다소 어려움</label></span>
+              <span class="choice warn"><input type="radio" name="f-status" id="f-status-4" value="어려움"><label for="f-status-4">어려움</label></span>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">다음 중 해당되는 사항이 있나요? <span style="font-weight:400;color:var(--gray);font-size:14px;">(여러 개 선택 가능)</span></label>
+            <div class="choice-group">
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-0" value="식사 어려움" onchange="onConcernChange('f',this)"><label for="f-concern-0">식사 어려움</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-1" value="건강문제 호소" onchange="onConcernChange('f',this)"><label for="f-concern-1">건강문제 호소</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-2" value="우울감 표현" onchange="onConcernChange('f',this)"><label for="f-concern-2">우울감 표현</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-3" value="외로움 표현" onchange="onConcernChange('f',this)"><label for="f-concern-3">외로움 표현</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-4" value="경제적 어려움" onchange="onConcernChange('f',this)"><label for="f-concern-4">경제적 어려움</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-5" value="대인관계 어려움" onchange="onConcernChange('f',this)"><label for="f-concern-5">대인관계 어려움</label></span>
+              <span class="choice"><input type="checkbox" class="f-concern" id="f-concern-6" value="없음" onchange="onConcernChange('f',this)"><label for="f-concern-6">없음</label></span>
+              <span class="choice warn"><input type="checkbox" class="f-concern" id="f-concern-7" value="기타" onchange="onConcernChange('f',this)"><label for="f-concern-7">기타</label></span>
+            </div>
+            <input type="text" id="f-concern-etc" placeholder="기타 내용을 입력하세요" style="display:none;margin-top:10px;">
+            <div class="risk-note">※ 위험징후 발견 시 담당자에게 별도 연락 부탁드립니다.</div>
+          </div>
           <div class="field"><label class="label">특이사항</label><textarea id="f-note" placeholder="건강 변화, 정서 상태, 기타 특이사항 (없으면 '없음')" style="min-height:70px;"></textarea></div>
           <div class="field">
-            <label class="label">활동 사진 <span class="req">*</span> <span style="font-weight:400;color:var(--gray);">(최소 2장)</span></label>
+            <label class="label">활동 사진 <span class="req">*</span> <span style="font-weight:800;color:var(--red);">(반드시 최소 2장 이상)</span></label>
             <div class="photo-upload-area" onclick="document.getElementById('photo-input').click()">
-              <div style="font-size:32px;">📷</div>
+              <div style="font-size:36px;">📷</div>
               <p>클릭하여 사진 추가 (여러 장 선택 가능)</p>
             </div>
             <input type="file" id="photo-input" accept="image/*" multiple style="display:none" onchange="addPhotos(this)">
             <div id="photo-grid" class="photo-grid"></div>
-            <span id="photo-count-badge" class="photo-count need">사진 0장 (최소 2장 필요)</span>
+            <span id="photo-count-badge" class="photo-count need">⚠️ 사진을 최소 2장 이상 올려주세요 (현재 0장)</span>
           </div>
           <div class="submit-box">
-            <p>✅ 모든 내용을 확인하셨나요? 제출 후에는 수정이 불가합니다.</p>
-            <button class="btn btn-primary" style="padding:13px 40px;font-size:15px;" onclick="submitReport()">담당자 확인 · 보고서 제출</button>
+            <p>✅ 모든 내용을 확인하셨나요? 제출 후에도 <b>「내 보고서」</b>에서 수정할 수 있습니다.</p>
+            <button class="btn btn-primary" style="padding:13px 40px;font-size:17px;" onclick="submitReport()">담당자 확인 · 보고서 제출</button>
           </div>
         </div>
       </div>
@@ -262,7 +309,7 @@
           <div class="stat-card"><div class="stat-num" id="stat-targets">0</div><div class="stat-label">총 대상자</div></div>
         </div>
         <div class="card">
-          <h3 style="font-size:15px;font-weight:800;margin-bottom:14px;">최근 제출 보고서</h3>
+          <h3 style="font-size:17px;font-weight:800;margin-bottom:14px;">최근 제출 보고서</h3>
           <div id="recent-reports" class="report-list"></div>
         </div>
       </div>
@@ -416,6 +463,23 @@ async function fbPatch(path, data) {
   return await res.json();
 }
 
+// ── 세션 저장 헬퍼 (자동 로그인 지원) ──
+// remember=true → localStorage(브라우저 닫아도 유지), false → sessionStorage(탭 종료 시 해제)
+function saveSession(user, remember){
+  try{
+    const s = JSON.stringify(user);
+    if(remember){ localStorage.setItem('mh_user', s); sessionStorage.removeItem('mh_user'); }
+    else { sessionStorage.setItem('mh_user', s); localStorage.removeItem('mh_user'); }
+  }catch(e){ console.warn('세션 저장 실패:', e.message); }
+}
+function loadSession(){
+  try{ return localStorage.getItem('mh_user') || sessionStorage.getItem('mh_user'); }
+  catch(e){ return null; }
+}
+function clearSession(){
+  try{ localStorage.removeItem('mh_user'); sessionStorage.removeItem('mh_user'); }catch(e){}
+}
+
 // ── DB 헬퍼 (기존 인터페이스 유지) ──
 async function getUsers() {
   const val = await fbGet('users');
@@ -450,6 +514,11 @@ async function ensureAdmin() {
 // ══════════════════════════════════════════════
 let currentUser = null;
 let photos = [];
+let editPhotos = [];          // 보고서 수정용 사진 배열
+let editingReportId = null;   // 현재 수정 중인 보고서 id
+const SESSION_LABELS = {'1':'1회기 · 차돌박이 순두부찌개','2':'2회기 · 서울식 소불고기전골','3':'3회기 · 우삼겹 된장찌개','4':'4회기 · 논현동 부대찌개','5':'5회기 · 대파 고추장 불고기'};
+const STATUS_OPTIONS = ['매우 양호','양호','보통','다소 어려움','어려움'];
+const CONCERN_OPTIONS = ['식사 어려움','건강문제 호소','우울감 표현','외로움 표현','경제적 어려움','대인관계 어려움','없음','기타'];
 let editingUserId = null;
 let newTargets = [];
 let pwTargetUserId = null;
@@ -466,8 +535,9 @@ async function startApp() {
     console.warn('초기화 경고:', e.message);
   }
 
-  // 세션 복원 시도
-  const saved = sessionStorage.getItem('mh_user');
+  // 세션 복원 시도 (자동 로그인: localStorage → sessionStorage 순)
+  const saved = loadSession();
+  const fromLocal = (() => { try { return !!localStorage.getItem('mh_user'); } catch(e){ return false; } })();
   if (saved) {
     try {
       const userData = JSON.parse(saved);
@@ -475,7 +545,7 @@ async function startApp() {
       const latest = await fbGet('users/' + userData.id);
       if (latest && latest.pw === userData.pw) {
         currentUser = latest;
-        sessionStorage.setItem('mh_user', JSON.stringify(latest));
+        saveSession(latest, fromLocal); // 있던 저장소에 최신정보로 갱신
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('page-app').classList.remove('hidden');
         document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
@@ -494,7 +564,7 @@ async function startApp() {
     } catch(e) {
       console.warn('세션 복원 실패:', e.message);
     }
-    sessionStorage.removeItem('mh_user');
+    clearSession();
   }
 
   document.getElementById('loading-screen').classList.add('hidden');
@@ -523,7 +593,8 @@ async function doLogin() {
     }
     errEl.classList.add('hidden');
     currentUser = userData;
-    sessionStorage.setItem('mh_user', JSON.stringify(currentUser)); // 세션 저장
+    const remember = document.getElementById('login-remember') ? document.getElementById('login-remember').checked : true;
+    saveSession(currentUser, remember); // 자동 로그인 여부에 따라 저장
 
     document.getElementById('page-login').classList.add('hidden');
     document.getElementById('page-app').classList.remove('hidden');
@@ -548,7 +619,7 @@ async function doLogin() {
 
 function doLogout() {
   currentUser = null; photos = [];
-  sessionStorage.removeItem('mh_user'); // 세션 삭제
+  clearSession(); // 자동 로그인 정보까지 모두 삭제
   document.getElementById('page-login').classList.remove('hidden');
   document.getElementById('page-app').classList.add('hidden');
   document.getElementById('login-id').value = '';
@@ -604,13 +675,15 @@ function addPhotos(input) {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const max = 600; // 800→600으로 축소
+        const max = 1600; // 화질 개선 (600→1600): 확인·인쇄용으로 충분히 선명
         let w = img.width, h = img.height;
         if (w > max) { h = Math.round(h * max / w); w = max; }
         if (h > max) { w = Math.round(w * max / h); h = max; }
         canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        photos.push(canvas.toDataURL('image/jpeg', 0.5)); // 0.7→0.5로 품질 낮춤
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        photos.push(canvas.toDataURL('image/jpeg', 0.88)); // 화질 개선 (0.5→0.88)
         renderPhotoGrid();
       };
       img.src = e.target.result;
@@ -631,10 +704,10 @@ function renderPhotoGrid() {
   });
   const badge = document.getElementById('photo-count-badge');
   if (photos.length >= 2) {
-    badge.textContent = `사진 ${photos.length}장 ✓`;
+    badge.textContent = `✅ 사진 ${photos.length}장 첨부 완료`;
     badge.className = 'photo-count ok';
   } else {
-    badge.textContent = `사진 ${photos.length}장 (최소 2장 필요)`;
+    badge.textContent = `⚠️ 사진을 최소 2장 이상 올려주세요 (현재 ${photos.length}장)`;
     badge.className = 'photo-count need';
   }
 }
@@ -648,6 +721,8 @@ async function submitReport() {
   const activity = document.getElementById('f-activity').value.trim();
   const reaction = document.getElementById('f-reaction').value.trim();
   const note = document.getElementById('f-note').value.trim();
+  const status = collectStatus('f');
+  const concerns = collectConcerns('f');
 
   if (!date)     { alert('방문 날짜를 입력해주세요.'); return; }
   if (!time)     { alert('방문 시간을 입력해주세요.'); return; }
@@ -655,6 +730,7 @@ async function submitReport() {
   if (!session)  { alert('회기를 선택해주세요.'); return; }
   if (!activity) { alert('회기 활동 내용을 입력해주세요.'); return; }
   if (!reaction) { alert('대상자 반응 및 소감을 입력해주세요.'); return; }
+  if (!status)   { alert('대상자의 전반적인 상태를 선택해주세요.'); return; }
   if (photos.length < 2) { alert('사진을 최소 2장 이상 업로드해주세요.'); return; }
 
   const sessionLabels = {'1':'1회기 · 차돌박이 순두부찌개','2':'2회기 · 서울식 소불고기전골','3':'3회기 · 우삼겹 된장찌개','4':'4회기 · 논현동 부대찌개','5':'5회기 · 대파 고추장 불고기'};
@@ -665,6 +741,7 @@ async function submitReport() {
     session: sessionLabels[session],
     activity, reaction,
     note: note || '없음',
+    status, concerns,
     photos: [...photos],
     createdAt: new Date().toISOString()
   };
@@ -679,6 +756,9 @@ async function submitReport() {
     document.getElementById('f-activity').value = '';
     document.getElementById('f-reaction').value = '';
     document.getElementById('f-note').value = '';
+    document.querySelectorAll('.f-concern').forEach(b=>b.checked=false);
+    document.querySelectorAll('input[name="f-status"]').forEach(b=>b.checked=false);
+    const fEtc=document.getElementById('f-concern-etc'); if(fEtc){ fEtc.value=''; fEtc.style.display='none'; }
     setDefaultDateTime();
     if (btn) { btn.disabled = false; btn.textContent = '담당자 확인 · 보고서 제출'; }
     alert(`✅ 보고서가 제출되었습니다!\n대상자: ${target} | ${sessionLabels[session]}`);
@@ -698,7 +778,7 @@ async function renderMyReports() {
   el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;">불러오는 중...</div>';
   const reports = await getReports();
   const mine = reports.filter(r => r.userId === currentUser.id);
-  if (!mine.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:14px;">제출된 보고서가 없습니다.</div>'; return; }
+  if (!mine.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">제출된 보고서가 없습니다.</div>'; return; }
   el.innerHTML = mine.map(r => reportItemHTML(r)).join('');
 }
 
@@ -710,7 +790,7 @@ function reportItemHTML(r) {
         <div class="report-item-title">📌 ${r.target} · ${r.session}</div>
         <div class="report-item-meta">📅 ${r.date} ${r.time} &nbsp;|&nbsp; 담당: ${r.userName}</div>
       </div>
-      <div style="font-size:12px;color:var(--gray);">사진 ${r.photos.length}장</div>
+      <div style="font-size:14px;color:var(--gray);">사진 ${r.photos.length}장</div>
     </div>
     <div class="report-item-tags">
       <span class="tag">${r.session.split('·')[0].trim()}</span>
@@ -741,14 +821,277 @@ async function showReport(id) {
     </div>
     <div class="modal-section"><div class="modal-section-label">회기 활동 내용</div><div class="modal-section-value">${report.activity}</div></div>
     <div class="modal-section"><div class="modal-section-label">대상자 반응 및 소감</div><div class="modal-section-value">${report.reaction}</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div class="modal-section"><div class="modal-section-label">전반적 상태</div><div>${renderStatusValue(report.status)}</div></div>
+      <div class="modal-section"><div class="modal-section-label">해당 사항</div><div>${renderAnswerTags(report.concerns)}</div></div>
+    </div>
     <div class="modal-section"><div class="modal-section-label">특이사항</div><div class="modal-section-value" style="${report.note!=='없음'?'color:var(--red);':''}">${report.note}</div></div>
     <div class="modal-section">
-      <div class="modal-section-label">활동 사진 (${report.photos.length}장)</div>
-      <div class="modal-photos">${report.photos.map(p=>`<img src="${p}">`).join('')}</div>
-    </div>`;
+      <div class="photos-head">
+        <div class="modal-section-label" style="margin-bottom:0;">활동 사진 (${report.photos.length}장)</div>
+        <button class="btn btn-primary btn-sm" onclick="downloadAllPhotos('${report.id}')">⬇ 사진 전체 저장</button>
+      </div>
+      <div class="modal-photos">${report.photos.map((p,i)=>`<div class="modal-photo-item"><img src="${p}" onclick="openPhoto('${report.id}',${i})"><button class="dl-one" onclick="downloadPhoto('${report.id}',${i})">저장</button></div>`).join('')}</div>
+    </div>
+    ${(currentUser && currentUser.id === report.userId) ? `<div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--sand);text-align:right;"><button class="btn btn-amber" style="padding:12px 28px;" onclick="editReport('${report.id}')">✏️ 이 보고서 수정하기</button></div>` : ''}`;
   document.getElementById('report-modal').classList.remove('hidden');
 }
 function closeModal(e) { if (e.target.id==='report-modal') document.getElementById('report-modal').classList.add('hidden'); }
+
+// ── 사진 다운로드 (저장된 원본을 재압축 없이 그대로 저장) ──
+function safeName(s){ return String(s||'').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,''); }
+function downloadPhoto(reportId, idx){
+  const r = reportsCache[reportId];
+  if(!r || !r.photos || !r.photos[idx]) return;
+  const sess = (r.session && r.session.split('·')[0]) ? r.session.split('·')[0].trim() : '';
+  const fname = `${safeName(r.target)}_${safeName(r.date)}_${safeName(sess)}_${idx+1}.jpg`;
+  const a = document.createElement('a');
+  a.href = r.photos[idx];           // dataURL 그대로 → 재압축 없음
+  a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function downloadAllPhotos(reportId){
+  const r = reportsCache[reportId];
+  if(!r || !r.photos || !r.photos.length) return;
+  for(let i=0;i<r.photos.length;i++){
+    downloadPhoto(reportId, i);
+    await new Promise(res=>setTimeout(res, 450)); // 브라우저 연속 다운로드 차단 방지
+  }
+}
+// ── 사진 새 창에서 원본 크기로 보기 ──
+function openPhoto(reportId, idx){
+  const r = reportsCache[reportId];
+  if(!r || !r.photos || !r.photos[idx]) return;
+  const w = window.open('', '_blank');
+  if(!w){ alert('팝업이 차단되어 있습니다. 브라우저에서 팝업을 허용해주세요.'); return; }
+  w.document.title = '활동 사진';
+  const img = w.document.createElement('img');
+  img.src = r.photos[idx];
+  img.style.maxWidth = '100%';
+  img.style.height = 'auto';
+  w.document.body.style.margin = '0';
+  w.document.body.style.background = '#1a1a1a';
+  w.document.body.style.textAlign = 'center';
+  w.document.body.appendChild(img);
+}
+
+// ══════════════════════════════════════════════
+//  보고서 수정 (참여자 본인)
+// ══════════════════════════════════════════════
+function escAttr(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escTxt(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── 상태/체크리스트 공통 처리 ──
+const WARN_STATUS = ['다소 어려움','어려움'];
+// '없음' ↔ 나머지 배타 선택 + '기타' 입력란 토글
+function onConcernChange(prefix, cb){
+  const boxes = [...document.querySelectorAll('.'+prefix+'-concern')];
+  if(cb.checked){
+    if(cb.value==='없음') boxes.forEach(b=>{ if(b.value!=='없음') b.checked=false; });
+    else { const n=boxes.find(b=>b.value==='없음'); if(n) n.checked=false; }
+  }
+  const etc = document.getElementById(prefix+'-concern-etc');
+  if(etc){ const on = boxes.some(b=>b.value==='기타' && b.checked); etc.style.display = on?'block':'none'; if(!on) etc.value=''; }
+}
+function collectStatus(prefix){ const el=document.querySelector(`input[name="${prefix}-status"]:checked`); return el?el.value:''; }
+function collectConcerns(prefix){
+  const arr=[...document.querySelectorAll('.'+prefix+'-concern:checked')].map(b=>b.value);
+  const i=arr.indexOf('기타');
+  if(i>-1){ const t=(document.getElementById(prefix+'-concern-etc')?.value||'').trim(); arr[i]= t?('기타: '+t):'기타'; }
+  return arr;
+}
+// 상세조회·편집용 칩 HTML 생성
+function buildStatusChips(prefix, selected){
+  return STATUS_OPTIONS.map((opt,i)=>{
+    const id=`${prefix}-status-${i}`, warn=WARN_STATUS.includes(opt)?' warn':'';
+    return `<span class="choice${warn}"><input type="radio" name="${prefix}-status" id="${id}" value="${escAttr(opt)}" ${opt===selected?'checked':''}><label for="${id}">${escTxt(opt)}</label></span>`;
+  }).join('');
+}
+function buildConcernChips(prefix, selectedArr){
+  selectedArr = selectedArr||[];
+  const hasEtc = selectedArr.some(v=>v==='기타'||String(v).startsWith('기타:'));
+  return CONCERN_OPTIONS.map((opt,i)=>{
+    const id=`${prefix}-concern-${i}`, warn=(opt!=='없음')?' warn':'';
+    const checked = (opt==='기타') ? (hasEtc?'checked':'') : (selectedArr.includes(opt)?'checked':'');
+    return `<span class="choice${warn}"><input type="checkbox" class="${prefix}-concern" id="${id}" value="${escAttr(opt)}" ${checked} onchange="onConcernChange('${prefix}',this)"><label for="${id}">${escTxt(opt)}</label></span>`;
+  }).join('');
+}
+function getEtcText(selectedArr){
+  const etc=(selectedArr||[]).find(v=>String(v).startsWith('기타:'));
+  return etc?String(etc).replace(/^기타:\s*/,''):'';
+}
+// 상세조회 표시용 태그
+function renderAnswerTags(concerns){
+  const arr = concerns||[];
+  if(!arr.length) return '<span style="color:var(--gray);">(미입력)</span>';
+  return arr.map(v=>{
+    const isNone = (v==='없음');
+    return `<span class="answer-tag ${isNone?'none':'warn'}">${escTxt(v)}</span>`;
+  }).join('');
+}
+function renderStatusValue(status){
+  if(!status) return '<span style="color:var(--gray);">(미입력)</span>';
+  const warn = WARN_STATUS.includes(status);
+  return `<span class="answer-tag ${warn?'warn':''}" style="${warn?'':'background:var(--primary-xlight);color:var(--primary);'}">${escTxt(status)}</span>`;
+}
+
+function editReport(id){
+  const r = reportsCache[id];
+  if(!r) return;
+  editingReportId = id;
+  editPhotos = [...(r.photos||[])];
+
+  // 대상자 옵션 (현재 사용자 담당 대상자 + 기존 값 보장)
+  let targets = (currentUser && currentUser.targets) ? [...currentUser.targets] : [];
+  if(r.target && !targets.includes(r.target)) targets.unshift(r.target);
+  if(!targets.length) targets = [r.target];
+  const targetOpts = targets.map(t=>`<option value="${escAttr(t)}" ${t===r.target?'selected':''}>${escTxt(t)}</option>`).join('');
+
+  // 회기 옵션
+  const sessionOpts = Object.entries(SESSION_LABELS).map(([v,label])=>`<option value="${v}" ${label===r.session?'selected':''}>${escTxt(label)}</option>`).join('');
+
+  document.getElementById('modal-title-text').textContent = '보고서 수정';
+  document.getElementById('modal-body').innerHTML = `
+    <div style="background:#FFF7EF;border:1px solid var(--sand);border-radius:10px;padding:12px 14px;font-size:15px;color:var(--amber);margin-bottom:18px;">✏️ 내용을 고친 뒤 <b>저장</b>을 누르면 반영됩니다.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="field"><label class="label">방문 날짜 <span class="req">*</span></label><input type="date" id="e-date" value="${escAttr(r.date)}"></div>
+      <div class="field"><label class="label">방문 시간 <span class="req">*</span></label><input type="time" id="e-time" value="${escAttr(r.time)}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="field"><label class="label">대상자 <span class="req">*</span></label><select id="e-target">${targetOpts}</select></div>
+      <div class="field"><label class="label">회기 <span class="req">*</span></label><select id="e-session">${sessionOpts}</select></div>
+    </div>
+    <div class="field"><label class="label">회기 활동 내용 <span class="req">*</span></label><textarea id="e-activity">${escTxt(r.activity)}</textarea></div>
+    <div class="field"><label class="label">대상자 반응 및 소감 <span class="req">*</span></label><textarea id="e-reaction">${escTxt(r.reaction)}</textarea></div>
+    <div class="field">
+      <label class="label">대상자의 전반적인 상태는 어떠했나요? <span class="req">*</span></label>
+      <div class="choice-group">${buildStatusChips('e', r.status)}</div>
+    </div>
+    <div class="field">
+      <label class="label">다음 중 해당되는 사항이 있나요? <span style="font-weight:400;color:var(--gray);font-size:14px;">(여러 개 선택 가능)</span></label>
+      <div class="choice-group">${buildConcernChips('e', r.concerns)}</div>
+      <input type="text" id="e-concern-etc" placeholder="기타 내용을 입력하세요" value="${escAttr(getEtcText(r.concerns))}" style="display:${(r.concerns||[]).some(v=>String(v).startsWith('기타')) ? 'block':'none'};margin-top:10px;">
+      <div class="risk-note">※ 위험징후 발견 시 담당자에게 별도 연락 부탁드립니다.</div>
+    </div>
+    <div class="field"><label class="label">특이사항</label><textarea id="e-note" style="min-height:70px;">${escTxt(r.note==='없음'?'':r.note)}</textarea></div>
+    <div class="field">
+      <label class="label">활동 사진 <span class="req">*</span> <span style="font-weight:800;color:var(--red);">(반드시 최소 2장 이상)</span></label>
+      <div class="photo-upload-area" onclick="document.getElementById('e-photo-input').click()">
+        <div style="font-size:36px;">📷</div>
+        <p>클릭하여 사진 추가 (여러 장 선택 가능)</p>
+      </div>
+      <input type="file" id="e-photo-input" accept="image/*" multiple style="display:none" onchange="addEditPhotos(this)">
+      <div id="e-photo-grid" class="photo-grid"></div>
+      <span id="e-photo-badge" class="photo-count"></span>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;border-top:1px solid var(--sand);padding-top:18px;">
+      <button class="btn btn-ghost" onclick="showReport('${id}')">취소</button>
+      <button class="btn btn-primary" id="e-save-btn" style="padding:12px 30px;" onclick="saveEditReport('${id}')">💾 수정 내용 저장</button>
+    </div>`;
+  renderEditPhotos();
+}
+
+function addEditPhotos(input){
+  const files = Array.from(input.files);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const max = 1600;
+        let w = img.width, h = img.height;
+        if (w > max) { h = Math.round(h * max / w); w = max; }
+        if (h > max) { w = Math.round(w * max / h); h = max; }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, w, h);
+        editPhotos.push(canvas.toDataURL('image/jpeg', 0.88));
+        renderEditPhotos();
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function renderEditPhotos(){
+  const grid = document.getElementById('e-photo-grid');
+  if(!grid) return;
+  grid.innerHTML = '';
+  editPhotos.forEach((src, idx) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${src}"><button class="del-btn" onclick="removeEditPhoto(${idx})">✕</button>`;
+    grid.appendChild(div);
+  });
+  const badge = document.getElementById('e-photo-badge');
+  if(!badge) return;
+  if (editPhotos.length >= 2) {
+    badge.textContent = `✅ 사진 ${editPhotos.length}장`;
+    badge.className = 'photo-count ok';
+  } else {
+    badge.textContent = `⚠️ 사진을 최소 2장 이상 올려주세요 (현재 ${editPhotos.length}장)`;
+    badge.className = 'photo-count need';
+  }
+}
+function removeEditPhoto(idx){ editPhotos.splice(idx,1); renderEditPhotos(); }
+
+async function saveEditReport(id){
+  const r = reportsCache[id];
+  if(!r) return;
+  const date = document.getElementById('e-date').value;
+  const time = document.getElementById('e-time').value;
+  const target = document.getElementById('e-target').value;
+  const sessionVal = document.getElementById('e-session').value;
+  const activity = document.getElementById('e-activity').value.trim();
+  const reaction = document.getElementById('e-reaction').value.trim();
+  const note = document.getElementById('e-note').value.trim();
+  const status = collectStatus('e');
+  const concerns = collectConcerns('e');
+
+  if (!date)     { alert('방문 날짜를 입력해주세요.'); return; }
+  if (!time)     { alert('방문 시간을 입력해주세요.'); return; }
+  if (!target)   { alert('대상자를 선택해주세요.'); return; }
+  if (!sessionVal) { alert('회기를 선택해주세요.'); return; }
+  if (!activity) { alert('회기 활동 내용을 입력해주세요.'); return; }
+  if (!reaction) { alert('대상자 반응 및 소감을 입력해주세요.'); return; }
+  if (!status)   { alert('대상자의 전반적인 상태를 선택해주세요.'); return; }
+  if (editPhotos.length < 2) { alert('사진을 최소 2장 이상 올려주세요.'); return; }
+
+  const updated = {
+    ...r,
+    date, time, target,
+    session: SESSION_LABELS[sessionVal] || r.session,
+    activity, reaction,
+    note: note || '없음',
+    status, concerns,
+    photos: [...editPhotos],
+    updatedAt: new Date().toISOString()
+  };
+
+  const btn = document.getElementById('e-save-btn');
+  try{
+    if(btn){ btn.disabled = true; btn.textContent = '저장 중...'; }
+    await saveReport(updated);     // 같은 id로 덮어쓰기
+    reportsCache[id] = updated;
+    alert('✅ 보고서가 수정되었습니다.');
+    document.getElementById('report-modal').classList.add('hidden');
+    // 목록 갱신
+    if (currentUser.role === 'admin') {
+      if (typeof renderAllReports === 'function') renderAllReports();
+      if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
+    } else {
+      if (typeof renderMyReports === 'function') renderMyReports();
+    }
+  }catch(e){
+    if(btn){ btn.disabled = false; btn.textContent = '💾 수정 내용 저장'; }
+    alert('수정 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n오류: ' + e.message);
+    console.error('수정 오류:', e);
+  }
+}
 
 // ══════════════════════════════════════════════
 //  관리자 대시보드
@@ -762,7 +1105,7 @@ async function renderAdminDashboard() {
   document.getElementById('stat-targets').textContent = allTargets;
   const el = document.getElementById('recent-reports');
   const recent = reports.slice(0,5);
-  if (!recent.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:24px 0;font-size:14px;">아직 제출된 보고서가 없습니다.</div>'; return; }
+  if (!recent.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:24px 0;font-size:16px;">아직 제출된 보고서가 없습니다.</div>'; return; }
   el.innerHTML = recent.map(r => reportItemHTML(r)).join('');
 }
 
@@ -922,7 +1265,7 @@ async function renderAllReports() {
   let reports = await getReports();
   if (filterUser) reports = reports.filter(r => r.userId === filterUser);
   renderTargetSummary(reports);
-  if (!reports.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:14px;">보고서가 없습니다.</div>'; return; }
+  if (!reports.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">보고서가 없습니다.</div>'; return; }
   el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
 }
 
@@ -950,21 +1293,21 @@ function renderTargetSummary(reports) {
     return `<tr>
       <td style="padding:10px 14px;font-weight:700;color:var(--brown);">${name}</td>
       <td style="padding:10px 14px;text-align:center;">${d.count}회</td>
-      <td style="padding:10px 14px;font-size:12px;color:var(--gray);">${sessionList}</td>
+      <td style="padding:10px 14px;font-size:14px;color:var(--gray);">${sessionList}</td>
       <td style="padding:10px 14px;text-align:center;">
         ${d.notes.length>0
-          ?`<span style="background:#FEF4F0;color:var(--red);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠ ${d.notes.length}건</span>`
-          :`<span style="background:#EEF6EC;color:var(--green);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">없음</span>`}
+          ?`<span style="background:#FEF4F0;color:var(--red);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">⚠ ${d.notes.length}건</span>`
+          :`<span style="background:#EEF6EC;color:var(--green);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">없음</span>`}
       </td>
-      <td style="padding:10px 14px;text-align:center;font-size:13px;color:var(--gray);">${d.latestDate}</td>
-      <td style="padding:10px 14px;font-size:13px;color:var(--gray);">${d.userName}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:15px;color:var(--gray);">${d.latestDate}</td>
+      <td style="padding:10px 14px;font-size:15px;color:var(--gray);">${d.userName}</td>
     </tr>`;
   }).join('');
   box.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="background:var(--primary);padding:12px 18px;"><span style="font-size:14px;font-weight:800;color:#fff;">📊 대상자별 진행 현황</span></div>
+      <div style="background:var(--primary);padding:12px 18px;"><span style="font-size:16px;font-weight:800;color:#fff;">📊 대상자별 진행 현황</span></div>
       <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <table style="width:100%;border-collapse:collapse;font-size:15px;">
           <thead><tr style="background:var(--cream-d);">
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">대상자</th>
             <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">총 방문</th>
@@ -992,14 +1335,14 @@ async function exportSummaryExcel() {
   Object.entries(map).forEach(([name,d]) => {
     summaryData.push([name, d.count, [...d.sessions].map(s=>s.split('·')[0].trim()).join(', '), d.notes.length, d.notes.join(' / ')||'없음', d.latestDate, d.userName]);
   });
-  const detailData = [['대상자','담당자','방문날짜','방문시간','회기','활동내용','반응및소감','특이사항']];
-  reports.forEach(r => detailData.push([r.target,r.userName,r.date,r.time,r.session,r.activity,r.reaction,r.note]));
+  const detailData = [['대상자','담당자','방문날짜','방문시간','회기','활동내용','반응및소감','특이사항','전반적상태','해당사항']];
+  reports.forEach(r => detailData.push([r.target,r.userName,r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', ')]));
   const wb = XLSX.utils.book_new();
   const ws1 = XLSX.utils.aoa_to_sheet(summaryData);
   ws1['!cols']=[14,12,22,12,40,14,12].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws1,'대상자별 요약');
   const ws2 = XLSX.utils.aoa_to_sheet(detailData);
-  ws2['!cols']=[12,10,12,8,22,30,30,20].map(w=>({wch:w}));
+  ws2['!cols']=[12,10,12,8,22,30,30,20,12,30].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws2,'회기별 상세');
   const d=new Date(), ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb,`맛있는하루_대상자현황_${ds}.xlsx`);
@@ -1010,11 +1353,11 @@ async function exportAllReportsExcel() {
   let reports = await getReports();
   if (filterUser) reports = reports.filter(r => r.userId === filterUser);
   if (!reports.length) { alert('내보낼 보고서가 없습니다.'); return; }
-  const data=[['번호','대상자','담당자','방문날짜','방문시간','회기','활동내용','대상자반응및소감','특이사항','사진수','제출일시']];
-  reports.forEach((r,i)=>data.push([i+1,r.target,r.userName,r.date,r.time,r.session,r.activity,r.reaction,r.note,r.photos.length,new Date(r.createdAt).toLocaleString('ko-KR')]));
+  const data=[['번호','대상자','담당자','방문날짜','방문시간','회기','활동내용','대상자반응및소감','특이사항','전반적상태','해당사항','사진수','제출일시']];
+  reports.forEach((r,i)=>data.push([i+1,r.target,r.userName,r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', '),r.photos.length,new Date(r.createdAt).toLocaleString('ko-KR')]));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!cols']=[5,12,10,12,8,22,30,30,20,6,18].map(w=>({wch:w}));
+  ws['!cols']=[5,12,10,12,8,22,30,30,20,12,30,6,18].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws,'전체보고서');
   const d=new Date(), ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb,`맛있는하루_전체보고서_${ds}.xlsx`);
