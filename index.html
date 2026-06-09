@@ -49,6 +49,13 @@
   .answer-tag{display:inline-block;padding:5px 13px;border-radius:20px;font-size:15px;font-weight:700;margin:3px 4px 3px 0;background:var(--primary-xlight);color:var(--primary);}
   .answer-tag.warn{background:#FEECEC;color:var(--red);}
   .answer-tag.none{background:#EEF6EC;color:var(--green);}
+  /* 계정별 그룹 보기 */
+  .user-group{margin-bottom:16px;border:1px solid var(--sand);border-radius:12px;padding:12px 14px;background:#fff;box-shadow:var(--shadow);}
+  .user-group-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer;font-size:18px;font-weight:800;color:var(--brown);list-style:none;}
+  .user-group-head::-webkit-details-marker{display:none;}
+  .user-group-head .arr{font-size:14px;color:var(--gray);transition:transform .2s;}
+  .user-group[open] .user-group-head .arr{transform:rotate(90deg);}
+  .user-group-count{background:var(--primary-xlight);color:var(--primary);font-size:14px;font-weight:700;padding:3px 12px;border-radius:20px;}
   .card{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:24px;}
   .badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;}
   .badge-admin{background:var(--primary-xlight);color:var(--primary);}
@@ -283,21 +290,9 @@
           </div>
           <div class="field hidden" id="survey-box">
             <div style="background:#EAF3FB;border:1.5px solid #9BC4E8;border-radius:12px;padding:16px;">
-              <div style="font-size:18px;font-weight:800;color:#2C6CA8;margin-bottom:4px;">📋 <span id="survey-title">사전</span> 검사지 촬영 (PHQ-9 · UCLA)</div>
-              <p style="font-size:14px;color:var(--gray);margin-bottom:14px;">대상자가 작성한 검사지를 <b>글자와 체크 표시가 또렷하게 보이도록</b> 정면에서 촬영해 올려주세요. 관리자가 자동으로 점수를 분석합니다.</p>
-              <label class="label" style="font-size:16px;">① PHQ-9 (우울) 검사지</label>
-              <div class="photo-upload-area" onclick="document.getElementById('phq9-input').click()" style="padding:14px;">
-                <div style="font-size:28px;">📷</div><p>PHQ-9 검사지 사진 추가</p>
-              </div>
-              <input type="file" id="phq9-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'phq9')">
-              <div id="phq9-grid" class="photo-grid"></div>
-              <label class="label" style="font-size:16px;margin-top:14px;">② UCLA (외로움) 검사지</label>
-              <div class="photo-upload-area" onclick="document.getElementById('ucla-input').click()" style="padding:14px;">
-                <div style="font-size:28px;">📷</div><p>UCLA 검사지 사진 추가</p>
-              </div>
-              <input type="file" id="ucla-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'ucla')">
-              <div id="ucla-grid" class="photo-grid"></div>
-              <p style="font-size:13px;color:var(--gray);margin-top:10px;">※ 검사지는 1회기(사전)·5회기(사후)에만 첨부합니다. 가능하면 두 검사지 모두 올려주세요.</p>
+              <div style="font-size:18px;font-weight:800;color:#2C6CA8;margin-bottom:4px;">🩺 <span id="survey-title">사전</span> 척도검사 (PHQ-9 · UCLA)</div>
+              <p style="font-size:14px;color:var(--gray);margin-bottom:14px;">자원봉사자가 어르신께 한 문항씩 여쭤보며 해당하는 칸을 선택해주세요. 점수는 자동으로 계산됩니다.</p>
+              <div id="survey-form"></div>
             </div>
           </div>
           <div class="submit-box">
@@ -784,10 +779,18 @@ async function submitReport() {
   const sessionLabels = {'1':'1회기 · 차돌박이 순두부찌개','2':'2회기 · 서울식 소불고기전골','3':'3회기 · 우삼겹 된장찌개','4':'4회기 · 논현동 부대찌개','5':'5회기 · 대파 고추장 불고기'};
   let survey = null;
   if (session === '1' || session === '5') {
+    const phqR = readSurveyResponses('phq9', 9);
+    const uclaR = readSurveyResponses('ucla', 20);
+    const pRes = scorePhq9(phqR);
+    const uRes = scoreUcla(uclaR);
+    const missing = phqR.filter(x=>x==null).length + uclaR.filter(x=>x==null).length;
+    if (missing > 0 && missing < 29) {
+      if (!confirm(`검사 문항 중 ${missing}개가 아직 비어 있습니다.\n비워둔 채로 제출할까요?`)) return;
+    }
     survey = {
       type: session==='1' ? '사전' : '사후',
-      phq9: { photos:[...surveyPhotos.phq9], result:null },
-      ucla: { photos:[...surveyPhotos.ucla], result:null }
+      phq9: { responses: phqR, result: { scores: phqR, total: pRes.total, complete: pRes.complete }, photos: [...surveyPhotos.phq9] },
+      ucla: { responses: uclaR, result: { scores: uRes.scores, total: uRes.total, complete: uRes.complete }, photos: [...surveyPhotos.ucla] }
     };
   }
   const report = {
@@ -891,7 +894,10 @@ async function showReport(id) {
       </div>
       <div class="modal-photos">${report.photos.map((p,i)=>`<div class="modal-photo-item"><img src="${p}" onclick="openPhoto('${report.id}',${i})"><button class="dl-one" onclick="downloadPhoto('${report.id}',${i})">저장</button></div>`).join('')}</div>
     </div>
-    ${(currentUser && currentUser.id === report.userId) ? `<div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--sand);text-align:right;"><button class="btn btn-amber" style="padding:12px 28px;" onclick="editReport('${report.id}')">✏️ 이 보고서 수정하기</button></div>` : ''}`;
+    ${(currentUser && (currentUser.id === report.userId || currentUser.role === 'admin')) ? `<div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--sand);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn btn-danger" style="padding:12px 22px;" onclick="deleteReport('${report.id}')">🗑 삭제</button>
+      <button class="btn btn-amber" style="padding:12px 26px;" onclick="editReport('${report.id}')">✏️ 수정하기</button>
+    </div>` : ''}`;
   document.getElementById('report-modal').classList.remove('hidden');
 }
 function closeModal(e) { if (e.target.id==='report-modal') document.getElementById('report-modal').classList.add('hidden'); }
@@ -1151,6 +1157,35 @@ async function saveEditReport(id){
   }
 }
 
+// ── 보고서 삭제 (본인 또는 관리자) ──
+async function deleteReport(id){
+  const r = reportsCache[id] || allReportsCache.find(x=>x.id===id);
+  if(!(currentUser && (currentUser.role==='admin' || (r && r.userId===currentUser.id)))){
+    alert('삭제 권한이 없습니다.'); return;
+  }
+  const info = r ? `${r.target} · ${r.session} (${r.date})` : '';
+  if(!confirm(`이 보고서를 삭제할까요?\n${info}\n\n삭제하면 되돌릴 수 없습니다.`)) return;
+  try{
+    await fbDelete('reports/' + id);
+    delete reportsCache[id];
+    allReportsCache = allReportsCache.filter(x=>x.id!==id);
+    const modal = document.getElementById('report-modal');
+    if(modal) modal.classList.add('hidden');
+    alert('🗑 보고서가 삭제되었습니다.');
+    if(currentUser.role==='admin'){
+      if(typeof renderAdminDashboard==='function') renderAdminDashboard();
+      if(typeof renderAllReports==='function') renderAllReports();
+      const surveyTab=document.getElementById('atab-survey');
+      if(surveyTab && !surveyTab.classList.contains('hidden') && typeof renderSurveyTab==='function') renderSurveyTab();
+    } else {
+      if(typeof renderMyReports==='function') renderMyReports();
+    }
+  }catch(e){
+    console.error('삭제 오류:', e);
+    alert('삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n오류: ' + e.message);
+  }
+}
+
 // ══════════════════════════════════════════════
 //  관리자 대시보드
 // ══════════════════════════════════════════════
@@ -1314,7 +1349,7 @@ async function saveMyPw() {
 async function populateFilterUser() {
   const users = await getUsers();
   const sel = document.getElementById('filter-user');
-  sel.innerHTML = '<option value="">전체 계정</option>' + users.filter(u=>u.role!=='admin').map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  sel.innerHTML = '<option value="">전체 (계정별로 보기)</option>' + users.filter(u=>u.role!=='admin').map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
 }
 
 async function renderAllReports() {
@@ -1322,10 +1357,35 @@ async function renderAllReports() {
   const el = document.getElementById('all-report-list');
   el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;">불러오는 중...</div>';
   let reports = await getReports();
+  allReportsCache = reports;  // 삭제/수정 정합성용 캐시 갱신
   if (filterUser) reports = reports.filter(r => r.userId === filterUser);
   renderTargetSummary(reports);
   if (!reports.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">보고서가 없습니다.</div>'; return; }
-  el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
+
+  if (filterUser) {
+    // 특정 계정 선택 → 평면 목록
+    el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
+  } else {
+    // 전체 → 참여자 계정별로 분리(접기/펼치기)
+    const byUser = {};
+    reports.forEach(r => {
+      const k = r.userId || '_unknown';
+      if(!byUser[k]) byUser[k] = { name: r.userName || '(이름 없음)', list: [] };
+      byUser[k].list.push(r);
+    });
+    const groups = Object.values(byUser).sort((a,b)=> a.name.localeCompare(b.name,'ko'));
+    el.innerHTML = groups.map(grp => {
+      const latest = grp.list.reduce((m,r)=> (!m || r.date>m) ? r.date : m, '');
+      const items = grp.list.map(r => reportItemHTML(r)).join('');
+      return `<details class="user-group" open>
+        <summary class="user-group-head">
+          <span>👤 ${escTxt(grp.name)} <span class="arr">▶</span></span>
+          <span class="user-group-count">${grp.list.length}건 · 최근 ${latest||'-'}</span>
+        </summary>
+        <div style="margin-top:12px;">${items}</div>
+      </details>`;
+    }).join('');
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -1397,6 +1457,30 @@ const PHQ9_ITEMS = [
 ];
 // UCLA 20문항 중 역채점 문항(1-based): 표시 칸 위치를 5-p로 환산
 const UCLA_REVERSE = new Set([1,5,6,9,10,15,16,19,20]);
+const UCLA_ITEMS = [
+  '얼마나 자주 주변 사람들과 잘 통한다고 느끼십니까?',
+  '얼마나 자주 사람들과의 교제가 부족하다고 느끼십니까?',
+  '얼마나 자주 도움을 청할 사람이 아무도 없다고 느끼십니까?',
+  '얼마나 자주 혼자라고 느끼십니까?',
+  '얼마나 자주 친구들 모임에 속해 있다고 느끼십니까?',
+  '얼마나 자주 주위 사람들과 비슷한 점이 많다고 느끼십니까?',
+  '얼마나 자주 더 이상 아무하고도 가깝지 않다고 느끼십니까?',
+  '얼마나 자주 나의 흥미와 생각이 주변 사람과 나누어지지 않는다고 느끼십니까?',
+  '얼마나 자주 자신이 적극적이고 호의적이라고 느끼십니까?',
+  '얼마나 자주 사람들과 가깝다고 느끼십니까?',
+  '얼마나 자주 혼자 남겨졌다고 느끼십니까?',
+  '얼마나 자주 다른 사람들과의 관계가 의미없다고 느끼십니까?',
+  '얼마나 자주 나를 진정으로 아는 사람이 아무도 없다고 느끼십니까?',
+  '얼마나 자주 다른 사람들로부터 고립되어 있다고 느끼십니까?',
+  '얼마나 자주 원할 때 함께 있어줄 사람을 찾을 수 있다고 느끼십니까?',
+  '얼마나 자주 나를 정말 이해해주는 사람들이 있다고 느끼십니까?',
+  '얼마나 자주 수줍음을 느끼십니까?',
+  '얼마나 자주 사람들이 나와 진정으로 함께 있지 않고 그저 주위에 있다고 느끼십니까?',
+  '얼마나 자주 내가 얘기할 수 있는 사람들이 주변에 있다고 생각하십니까?',
+  '얼마나 자주 도움을 청할 수 있는 사람들이 있다고 느끼십니까?'
+];
+const PHQ9_OPTIONS = [{v:0,t:'전혀 아님'},{v:1,t:'며칠'},{v:2,t:'일주일 이상'},{v:3,t:'거의 매일'}];
+const UCLA_OPTIONS = [{v:1,t:'전혀'},{v:2,t:'드물게'},{v:3,t:'가끔'},{v:4,t:'항상'}];
 
 function phq9Level(total){
   if(total==null) return {label:'-', color:'var(--gray)'};
@@ -1440,9 +1524,76 @@ function onSessionChange(){
   if(v==='1' || v==='5'){
     box.classList.remove('hidden');
     document.getElementById('survey-title').textContent = (v==='1') ? '사전' : '사후';
+    const form = document.getElementById('survey-form');
+    if(form && !form.children.length) buildSurveyForm();
   } else {
     box.classList.add('hidden');
   }
+}
+// 검사 문항 한 줄 생성
+function surveyItemRow(prefix, idx, text, options){
+  const name = `${prefix}-q${idx}`;
+  const chips = options.map((o,j)=>{
+    const id=`${name}-${j}`;
+    return `<span class="choice"><input type="radio" name="${name}" id="${id}" value="${o.v}" onchange="updateLiveScore()"><label for="${id}">${escTxt(o.t)}</label></span>`;
+  }).join('');
+  return `<div style="padding:10px 0;border-bottom:1px solid #DCEAF6;">
+    <div style="font-size:15px;font-weight:600;color:var(--brown);margin-bottom:7px;">${idx+1}. ${escTxt(text)}</div>
+    <div class="choice-group">${chips}</div>
+  </div>`;
+}
+function buildSurveyForm(){
+  const phq = PHQ9_ITEMS.map((t,i)=>surveyItemRow('phq9',i,t,PHQ9_OPTIONS)).join('');
+  const ucla = UCLA_ITEMS.map((t,i)=>surveyItemRow('ucla',i,t,UCLA_OPTIONS)).join('');
+  document.getElementById('survey-form').innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:800;color:#2C6CA8;margin-bottom:4px;">① PHQ-9 (우울) · 9문항</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:8px;">"지난 2주 동안 다음 문제로 얼마나 자주 곤란을 겪으셨나요?"</p>
+      ${phq}
+      <div id="phq9-live" style="text-align:right;font-weight:800;margin-top:10px;">PHQ-9 총점: -</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;">
+      <div style="font-weight:800;color:#2C6CA8;margin-bottom:4px;">② UCLA (외로움) · 20문항</div>
+      <p style="font-size:13px;color:var(--gray);margin-bottom:8px;">"얼마나 자주 그렇게 느끼시나요?"</p>
+      ${ucla}
+      <div id="ucla-live" style="text-align:right;font-weight:800;margin-top:10px;">UCLA 총점: -</div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px;">
+      <div style="font-weight:800;color:#2C6CA8;margin-bottom:8px;">③ 검사지 원본 사진 (보관용 · 선택)</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:140px;">
+          <label class="label" style="font-size:14px;">PHQ-9 원본</label>
+          <div class="photo-upload-area" onclick="document.getElementById('phq9-input').click()" style="padding:10px;"><div style="font-size:22px;">📷</div><p style="font-size:13px;">사진 추가</p></div>
+          <input type="file" id="phq9-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'phq9')">
+          <div id="phq9-grid" class="photo-grid"></div>
+        </div>
+        <div style="flex:1;min-width:140px;">
+          <label class="label" style="font-size:14px;">UCLA 원본</label>
+          <div class="photo-upload-area" onclick="document.getElementById('ucla-input').click()" style="padding:10px;"><div style="font-size:22px;">📷</div><p style="font-size:13px;">사진 추가</p></div>
+          <input type="file" id="ucla-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'ucla')">
+          <div id="ucla-grid" class="photo-grid"></div>
+        </div>
+      </div>
+    </div>`;
+  updateLiveScore();
+}
+// 현재 입력값 읽기
+function readSurveyResponses(prefix, count){
+  const arr=[];
+  for(let i=0;i<count;i++){
+    const el=document.querySelector(`input[name="${prefix}-q${i}"]:checked`);
+    arr.push(el ? parseInt(el.value,10) : null);
+  }
+  return arr;
+}
+// 실시간 총점 표시
+function updateLiveScore(){
+  const p = scorePhq9(readSurveyResponses('phq9',9));
+  const u = scoreUcla(readSurveyResponses('ucla',20));
+  const pe=document.getElementById('phq9-live');
+  if(pe){ const lv=phq9Level(p.total); pe.innerHTML = `PHQ-9 총점: <span style="color:${lv.color}">${p.total ?? '-'}${p.complete?(' · '+lv.label):' (미완료)'}</span>`; }
+  const ue=document.getElementById('ucla-live');
+  if(ue){ const lv=uclaLevel(u.total); ue.innerHTML = `UCLA 총점: <span style="color:${lv.color}">${u.total ?? '-'}${u.complete?(' · '+lv.label):' (미완료)'}</span>`; }
 }
 function addSurveyPhotos(input, kind){
   Array.from(input.files).forEach(file => {
@@ -1482,7 +1633,8 @@ function renderSurveyPhotoGrid(kind){
 function removeSurveyPhoto(kind, idx){ surveyPhotos[kind].splice(idx,1); renderSurveyPhotoGrid(kind); }
 function resetSurveyForm(){
   surveyPhotos = { phq9:[], ucla:[] };
-  ['phq9','ucla'].forEach(k=>{ const g=document.getElementById(k+'-grid'); if(g) g.innerHTML=''; });
+  const form = document.getElementById('survey-form');
+  if(form) form.innerHTML = '';   // 다음 회기 선택 시 새로 생성
   document.getElementById('survey-box').classList.add('hidden');
 }
 
@@ -1494,7 +1646,7 @@ async function renderSurveyTab(){
   box.innerHTML = '<p style="color:var(--gray);">불러오는 중...</p>';
   let reports = await getReports();
   allReportsCache = reports;
-  const surveyed = reports.filter(r => r.survey && ( (r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length) ));
+  const surveyed = reports.filter(r => r.survey);
   if(!surveyed.length){
     box.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);padding:30px;">검사지가 첨부된 보고서가 없습니다.<br>참여자가 1회기(사전)·5회기(사후) 작성 시 검사지를 올리면 여기에 표시됩니다.</div>';
     return;
@@ -1509,36 +1661,34 @@ async function renderSurveyTab(){
 }
 
 function scaleBlock(kind, report){
-  // kind: 'phq9' | 'ucla'
-  if(!report || !report.survey || !report.survey[kind] || !report.survey[kind].photos.length){
-    return `<div style="flex:1;min-width:0;color:var(--gray);font-size:14px;padding:8px 0;">사진 없음</div>`;
+  if(!report || !report.survey || !report.survey[kind]){
+    return `<div style="flex:1;min-width:0;color:var(--gray);font-size:14px;padding:8px 0;">검사 없음</div>`;
   }
   const data = report.survey[kind];
   const res = data.result;
   const label = (kind==='phq9') ? 'PHQ-9' : 'UCLA';
-  const thumbs = data.photos.map((p,i)=>`<img src="${p}" onclick="openSurveyPhoto('${report.id}','${kind}',${i})" style="width:54px;height:54px;object-fit:cover;border-radius:6px;cursor:zoom-in;margin:2px;">`).join('');
-  let resultHtml;
-  if(res){
+  const hasResult = res && res.total!=null;
+  const thumbs = (data.photos||[]).map((p,i)=>`<img src="${p}" onclick="openSurveyPhoto('${report.id}','${kind}',${i})" style="width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:zoom-in;margin:2px;">`).join('');
+  let body;
+  if(hasResult){
     const lv = (kind==='phq9') ? phq9Level(res.total) : uclaLevel(res.total);
-    const conf = res.confidence ? `<span style="font-size:12px;color:var(--gray);">· 인식 신뢰도: ${escTxt(res.confidence)}</span>` : '';
     const riskFlag = (kind==='phq9' && res.scores && res.scores[8]!=null && res.scores[8]>=1)
-      ? `<div class="risk-note" style="margin-top:8px;">⚠️ 9번(자해·자살 생각) 문항이 ${res.scores[8]}점입니다. 즉시 담당자 확인이 필요합니다.</div>` : '';
-    resultHtml = `
-      <div style="font-size:22px;font-weight:900;color:${lv.color};margin-top:6px;">총점 ${res.total ?? '-'} <span style="font-size:15px;font-weight:700;">${lv.label}</span> ${conf}</div>
-      ${res.note ? `<div style="font-size:13px;color:var(--gray);margin-top:4px;">메모: ${escTxt(res.note)}</div>`:''}
+      ? `<div class="risk-note" style="margin-top:8px;">⚠️ 9번(자해·자살 생각)이 ${res.scores[8]}점입니다. 즉시 확인이 필요합니다.</div>` : '';
+    body = `
+      <div style="font-size:22px;font-weight:900;color:${lv.color};margin-top:6px;">총점 ${res.total} <span style="font-size:15px;font-weight:700;">${lv.label}</span></div>
+      ${res.complete ? '' : '<div style="font-size:13px;color:var(--amber);">※ 일부 문항 미입력</div>'}
       ${riskFlag}
       <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:14px;color:var(--primary);font-weight:700;">문항별 점수 보기</summary>
-        <div style="font-size:13px;color:var(--brown);margin-top:6px;line-height:1.8;">${(res.scores||[]).map((s,i)=>`${i+1}.&nbsp;<b>${s==null?'?':s}</b>`).join(' &nbsp; ')}</div>
-      </details>
-      <button class="btn btn-ghost btn-sm" style="margin-top:8px;" onclick="analyzeSurvey('${report.id}','${kind}')">🔄 다시 분석</button>`;
+        <div style="font-size:13px;color:var(--brown);margin-top:6px;line-height:1.9;">${(res.scores||[]).map((s,i)=>`${i+1}.&nbsp;<b>${s==null?'-':s}</b>`).join(' &nbsp; ')}</div>
+      </details>`;
   } else {
-    resultHtml = `<button class="btn btn-primary btn-sm" style="margin-top:8px;" id="ana-${report.id}-${kind}" onclick="analyzeSurvey('${report.id}','${kind}')">🤖 ${label} 자동 분석</button>`;
+    body = `<div style="color:var(--gray);font-size:14px;margin-top:6px;">미입력</div>`;
   }
   return `
     <div style="flex:1;min-width:240px;border:1px solid var(--sand);border-radius:10px;padding:12px;">
       <div style="font-weight:800;color:var(--brown);font-size:15px;">${label} <span style="font-size:13px;color:var(--gray);font-weight:600;">(${report.survey.type})</span></div>
-      <div style="display:flex;flex-wrap:wrap;margin:6px 0;">${thumbs}</div>
-      ${resultHtml}
+      ${body}
+      ${thumbs ? `<div style="margin-top:8px;"><div style="font-size:12px;color:var(--gray);margin-bottom:3px;">원본 사진</div><div style="display:flex;flex-wrap:wrap;">${thumbs}</div></div>` : ''}
     </div>`;
 }
 
@@ -1589,74 +1739,6 @@ function openSurveyPhoto(reportId, kind, idx){
   img.src=r.survey[kind].photos[idx]; img.style.maxWidth='100%';
   w.document.body.style.margin='0'; w.document.body.style.background='#1a1a1a'; w.document.body.style.textAlign='center';
   w.document.body.appendChild(img);
-}
-
-// ── AI 비전 분석: 검사지 사진 → 점수 코딩 ──
-async function analyzeSurvey(reportId, kind){
-  const r = allReportsCache.find(x=>x.id===reportId);
-  if(!r || !r.survey[kind] || !r.survey[kind].photos.length){ alert('분석할 검사지 사진이 없습니다.'); return; }
-  const btn = document.getElementById(`ana-${reportId}-${kind}`) || event?.target;
-  const photos = r.survey[kind].photos;
-  try{
-    if(btn){ btn.disabled=true; btn.textContent='🔍 분석 중... (최대 30초)'; }
-    const result = await callVisionAnalysis(kind, photos);
-    r.survey[kind].result = result;
-    await saveReport(r);          // survey 포함 전체 덮어쓰기
-    // 캐시 갱신
-    const idx = allReportsCache.findIndex(x=>x.id===reportId);
-    if(idx>-1) allReportsCache[idx]=r;
-    if(reportsCache[reportId]) reportsCache[reportId]=r;
-    renderSurveyTab();
-  }catch(e){
-    console.error('분석 오류:', e);
-    if(btn){ btn.disabled=false; btn.textContent='🤖 자동 분석 (재시도)'; }
-    alert('분석 중 오류가 발생했습니다.\n사진이 또렷한지 확인 후 다시 시도해주세요.\n\n오류: ' + e.message);
-  }
-}
-
-// Claude 비전 호출 → JSON 파싱 → 채점
-async function callVisionAnalysis(kind, photoDataUrls){
-  const imageBlocks = photoDataUrls.map(durl => ({
-    type:'image',
-    source:{ type:'base64', media_type:'image/jpeg', data: durl.split(',')[1] }
-  }));
-  let prompt;
-  if(kind==='phq9'){
-    prompt = `첨부 이미지는 한국어 PHQ-9 우울 검사지입니다. 9개 문항 각각에 대해 응답자가 체크/표시(동그라미, V, 색칠 등)한 칸을 찾아 점수를 판단하세요.
-응답 칸은 4개이며 왼쪽부터 점수가 0,1,2,3 입니다 (예: '전혀 아니다'=0, '며칠 동안'=1, '일주일 이상'=2, '거의 매일'=3).
-각 문항의 점수를 0~3 정수로 판단하고, 표시를 못 찾거나 불명확하면 그 문항은 null로 두세요.
-반드시 아래 JSON 형식만 출력하세요(설명/마크다운 금지):
-{"scores":[9개의 0~3 정수 또는 null],"confidence":"high|medium|low","note":"불명확하거나 비어있는 문항 안내(없으면 빈 문자열)"}`;
-  } else {
-    prompt = `첨부 이미지는 한국어 UCLA 외로움 척도(20문항) 검사지입니다. 각 문항의 응답 칸은 4개이며, 왼쪽부터 순서대로 '전혀 그렇지 않다'(1), '드물게 그렇다'(2), '가끔 그렇다'(3), '항상 그렇다'(4) 입니다.
-각 문항에서 응답자가 표시한 칸의 '위치'를 1~4 정수로 판단하세요. (점수가 아니라 왼쪽부터 몇 번째 칸인지 위치 값)
-표시를 못 찾거나 불명확하면 그 문항은 null로 두세요.
-반드시 아래 JSON 형식만 출력하세요(설명/마크다운 금지):
-{"responses":[20개의 1~4 정수 또는 null],"confidence":"high|medium|low","note":"불명확하거나 비어있는 문항 안내(없으면 빈 문자열)"}`;
-  }
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({
-      model:'claude-sonnet-4-20250514',
-      max_tokens:1000,
-      messages:[ { role:'user', content:[ ...imageBlocks, { type:'text', text:prompt } ] } ]
-    })
-  });
-  if(!resp.ok){ throw new Error('API 응답 오류 ('+resp.status+')'); }
-  const data = await resp.json();
-  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
-  const clean = text.replace(/```json/g,'').replace(/```/g,'').trim();
-  const m = clean.match(/\{[\s\S]*\}/);
-  if(!m) throw new Error('분석 결과를 해석할 수 없습니다.');
-  const parsed = JSON.parse(m[0]);
-  if(kind==='phq9'){
-    const scored = scorePhq9(parsed.scores||[]);
-    return { scores: scored.scores, total: scored.total, complete: scored.complete, confidence: parsed.confidence||'', note: parsed.note||'' };
-  } else {
-    const scored = scoreUcla(parsed.responses||[]);
-    return { responses: parsed.responses||[], scores: scored.scores, total: scored.total, complete: scored.complete, confidence: parsed.confidence||'', note: parsed.note||'' };
-  }
 }
 
 // ── 척도결과 엑셀 ──
