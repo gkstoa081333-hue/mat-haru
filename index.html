@@ -7,6 +7,7 @@
 <meta name="supported-color-schemes" content="light">
 <title>맛;하루(맛있는 하루) 방문보고 시스템</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
@@ -175,10 +176,9 @@
     .section-header{flex-wrap:wrap;gap:10px;}
     .report-header{flex-wrap:wrap;gap:10px;}
     .photos-head{flex-wrap:wrap;}
-    /* 탭이 많아도 깨지지 않게 가로 스크롤 */
-    .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
-    .tab-btn{flex:0 0 auto;white-space:nowrap;padding:9px 16px;}
-    .tabs::-webkit-scrollbar{display:none;}
+    /* 탭이 많아도 모두 보이도록 줄바꿈 배치 */
+    .tabs{flex-wrap:wrap;}
+    .tab-btn{flex:1 1 auto;white-space:nowrap;padding:9px 13px;font-size:14px;}
     [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important;}
   }
   @media(max-width:380px){
@@ -344,6 +344,7 @@
         <button class="tab-btn" onclick="switchAdminTab('reports',this)">📋 전체 보고서</button>
         <button class="tab-btn" onclick="switchAdminTab('survey',this)">🩺 척도검사</button>
         <button class="tab-btn" onclick="switchAdminTab('trash',this)">🗑 휴지통</button>
+        <button class="tab-btn" onclick="switchAdminTab('backup',this)">☁️ 드라이브 백업</button>
       </div>
 
       <div id="atab-dashboard">
@@ -398,6 +399,12 @@
         </div>
         <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">삭제한 보고서는 <b>30일간 보관</b>되며 언제든 복원할 수 있습니다. 30일이 지나면 자동으로 완전 삭제됩니다.</p>
         <div id="trash-list"></div>
+      </div>
+
+      <div id="atab-backup" class="hidden">
+        <div class="section-header"><h3>☁️ 구글 드라이브 백업</h3></div>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">업로드된 보고서 사진을 구글 드라이브에 백업합니다. 처음 한 번만 아래 설정을 마치면, 이후에는 버튼만 누르면 됩니다.</p>
+        <div id="backup-body"></div>
       </div>
     </div>
   </div>
@@ -719,7 +726,7 @@ function switchTab(tab, btn) {
   if (tab === 'list') renderMyReports();
 }
 function switchAdminTab(tab, btn) {
-  ['dashboard','accounts','reports','survey','trash'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
+  ['dashboard','accounts','reports','survey','trash','backup'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
   document.querySelectorAll('#admin-section .tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('atab-'+tab).classList.remove('hidden');
   btn.classList.add('active');
@@ -728,6 +735,7 @@ function switchAdminTab(tab, btn) {
   if (tab === 'dashboard') renderAdminDashboard();
   if (tab === 'survey') renderSurveyTab();
   if (tab === 'trash') renderTrash();
+  if (tab === 'backup') renderBackup();
 }
 
 // ══════════════════════════════════════════════
@@ -1263,6 +1271,157 @@ function refreshAfterReportChange(){
   } else {
     if(typeof renderMyReports==='function') renderMyReports();
   }
+}
+
+// ══════════════════════════════════════════════
+//  구글 드라이브 백업 (관리자 전용)
+// ══════════════════════════════════════════════
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+function getClientId(){ try{ return localStorage.getItem('gdrive_client_id') || ''; }catch(e){ return ''; } }
+function saveClientId(){
+  const v = document.getElementById('gdrive-cid').value.trim();
+  try{ localStorage.setItem('gdrive_client_id', v); }catch(e){}
+  alert(v ? '클라이언트 ID가 저장되었습니다.' : '클라이언트 ID를 비웠습니다.');
+  renderBackup();
+}
+function blog(msg){
+  const el = document.getElementById('backup-log');
+  if(el){ el.innerHTML += `<div>${escTxt(msg)}</div>`; el.scrollTop = el.scrollHeight; }
+}
+
+function renderBackup(){
+  const cid = getClientId();
+  const box = document.getElementById('backup-body');
+  if(!box) return;
+  if(!cid){
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:16px;">
+        <div style="font-weight:800;color:var(--brown);font-size:17px;margin-bottom:10px;">① 처음 한 번 설정 (구글 클라이언트 ID)</div>
+        <ol style="font-size:14px;color:var(--brown);line-height:1.9;padding-left:20px;">
+          <li>구글 클라우드 콘솔(console.cloud.google.com) 접속 → 프로젝트 생성</li>
+          <li>‘API 및 서비스’ → ‘라이브러리’에서 <b>Google Drive API</b> 사용 설정</li>
+          <li>‘OAuth 동의 화면’ 구성(외부/테스트, 본인 구글계정을 테스트 사용자로 추가)</li>
+          <li>‘사용자 인증 정보’ → ‘OAuth 클라이언트 ID’ → <b>웹 애플리케이션</b> 선택</li>
+          <li>‘승인된 자바스크립트 원본’에 이 사이트 주소 추가 (예: https://gkstoa081333-hue.github.io)</li>
+          <li>발급된 <b>클라이언트 ID</b>를 아래에 붙여넣고 저장</li>
+        </ol>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <input type="text" id="gdrive-cid" placeholder="000000-xxxx.apps.googleusercontent.com" style="flex:1;min-width:220px;">
+          <button class="btn btn-primary" onclick="saveClientId()">저장</button>
+        </div>
+      </div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:15px;color:var(--green);font-weight:700;">✅ 설정 완료 — 백업할 수 있습니다</div>
+        <button class="btn btn-ghost btn-sm" onclick="resetClientId()">클라이언트 ID 변경</button>
+      </div>
+      <p style="font-size:14px;color:var(--gray);margin-top:10px;">‘맛있는하루 사진백업’ 폴더 아래에 날짜별 폴더를 만들어, 모든 보고서의 사진(활동·검사지)을 올립니다.</p>
+      <button class="btn btn-primary" style="margin-top:14px;padding:13px 26px;" id="backup-btn" onclick="backupToDrive()">☁️ 구글 드라이브로 사진 백업 시작</button>
+    </div>
+    <div id="backup-log" style="font-size:13px;color:var(--brown);background:#fff;border:1px solid var(--sand);border-radius:10px;padding:14px;max-height:300px;overflow:auto;line-height:1.7;display:none;"></div>`;
+}
+function resetClientId(){ try{ localStorage.removeItem('gdrive_client_id'); }catch(e){} renderBackup(); }
+
+let _driveToken = null;
+function backupToDrive(){
+  const cid = getClientId();
+  if(!cid){ renderBackup(); return; }
+  if(typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2){
+    alert('구글 로그인 모듈을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); return;
+  }
+  const logEl = document.getElementById('backup-log');
+  if(logEl){ logEl.style.display='block'; logEl.innerHTML=''; }
+  blog('구글 계정 인증을 요청합니다...');
+  const tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: DRIVE_SCOPE,
+    callback: async (resp) => {
+      if(resp.error){ blog('❌ 인증 실패: ' + resp.error); return; }
+      _driveToken = resp.access_token;
+      try{ await runBackup(_driveToken); }
+      catch(e){ blog('❌ 오류: ' + e.message); console.error(e); }
+    }
+  });
+  tokenClient.requestAccessToken({ prompt: '' });
+}
+
+async function driveApi(token, url, opts={}){
+  const res = await fetch(url, { ...opts, headers: { 'Authorization':'Bearer '+token, ...(opts.headers||{}) } });
+  if(!res.ok){ throw new Error('드라이브 API 오류 ('+res.status+')'); }
+  return res.json();
+}
+async function driveFindOrCreateFolder(token, name, parentId){
+  // drive.file 스코프: 앱이 만든 폴더만 검색 가능
+  const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false` + (parentId?` and '${parentId}' in parents`:''));
+  try{
+    const found = await driveApi(token, `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
+    if(found.files && found.files.length) return found.files[0].id;
+  }catch(e){ /* 검색 실패 시 새로 생성 */ }
+  const meta = { name, mimeType:'application/vnd.google-apps.folder' };
+  if(parentId) meta.parents=[parentId];
+  const created = await driveApi(token, 'https://www.googleapis.com/drive/v3/files', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(meta)
+  });
+  return created.id;
+}
+async function driveUpload(token, name, parentId, dataUrl){
+  const base64 = dataUrl.split(',')[1];
+  const boundary = 'mh_boundary_'+Date.now();
+  const meta = { name, parents:[parentId] };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+    `--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n` +
+    `--${boundary}--`;
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'multipart/related; boundary='+boundary },
+    body
+  });
+  if(!res.ok) throw new Error('업로드 실패 ('+res.status+')');
+  return res.json();
+}
+
+async function runBackup(token){
+  const btn = document.getElementById('backup-btn');
+  if(btn){ btn.disabled=true; btn.textContent='백업 중...'; }
+  blog('✅ 인증 완료. 백업을 시작합니다.');
+  const reports = await getReports();      // 휴지통 제외
+  // 사진이 있는 보고서만
+  const withPhotos = reports.filter(r => (r.photos&&r.photos.length) || (r.survey&&((r.survey.phq9&&r.survey.phq9.photos&&r.survey.phq9.photos.length)||(r.survey.ucla&&r.survey.ucla.photos&&r.survey.ucla.photos.length))));
+  if(!withPhotos.length){ blog('백업할 사진이 없습니다.'); if(btn){btn.disabled=false;btn.textContent='☁️ 구글 드라이브로 사진 백업 시작';} return; }
+
+  blog(`총 ${withPhotos.length}건의 보고서를 백업합니다.`);
+  const rootId = await driveFindOrCreateFolder(token, '맛있는하루 사진백업', null);
+  const now = new Date();
+  const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+  const runId = await driveFindOrCreateFolder(token, '백업_'+stamp, rootId);
+  blog('📁 폴더 준비 완료: 맛있는하루 사진백업 / 백업_'+stamp);
+
+  let okCount=0, total=0;
+  const safe = s => String(s||'').replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,'');
+  for(const r of withPhotos){
+    const sess = (r.session && r.session.split('·')[0]) ? r.session.split('·')[0].trim() : '';
+    const base = `${safe(r.userName)}_${safe(r.target)}_${safe(r.date)}_${safe(sess)}`;
+    // 활동 사진
+    const list = [];
+    (r.photos||[]).forEach((p,i)=> list.push([`${base}_활동${i+1}.jpg`, p]));
+    if(r.survey){
+      (r.survey.phq9?.photos||[]).forEach((p,i)=> list.push([`${base}_PHQ9_${i+1}.jpg`, p]));
+      (r.survey.ucla?.photos||[]).forEach((p,i)=> list.push([`${base}_UCLA_${i+1}.jpg`, p]));
+    }
+    for(const [fname, durl] of list){
+      total++;
+      try{ await driveUpload(token, fname, runId, durl); okCount++; blog(`  ⬆️ ${fname}`); }
+      catch(e){ blog(`  ⚠️ 실패: ${fname} (${e.message})`); }
+      await new Promise(res=>setTimeout(res,120)); // 과도한 요청 방지
+    }
+  }
+  blog(`\n🎉 백업 완료: ${okCount}/${total}장 업로드되었습니다.`);
+  blog('구글 드라이브 → ‘맛있는하루 사진백업’ 폴더에서 확인하세요.');
+  if(btn){ btn.disabled=false; btn.textContent='☁️ 다시 백업하기'; }
 }
 
 // ── 휴지통 화면 렌더 ──
