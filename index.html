@@ -17,7 +17,8 @@
     --shadow-lg:0 8px 32px rgba(200,120,80,.18);
   }
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Noto Sans KR',sans-serif;background:var(--cream);color:var(--brown);min-height:100vh;}
+  html,body{overflow-x:hidden;max-width:100%;}
+  body{font-family:'Noto Sans KR',sans-serif;background:var(--cream);color:var(--brown);min-height:100vh;word-break:keep-all;overflow-wrap:break-word;}
   .hidden{display:none!important;}
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 20px;border:none;border-radius:10px;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;transition:all .18s;}
   .btn-primary{background:var(--primary);color:#fff;}
@@ -157,10 +158,33 @@
   .stat-card .stat-label{font-size:14px;color:var(--gray);margin-top:4px;}
 
   @media(max-width:600px){
+    #app-main{padding:20px 14px;}
+    .nav-inner{padding:10px 14px;}
     .stat-grid{gap:8px;}
-    .stat-card .stat-num{font-size:27px;}
+    .stat-card{padding:14px 8px;}
+    .stat-card .stat-num{font-size:26px;}
+    .stat-card .stat-label{font-size:12px;}
+    .modal{padding:20px 16px;}
+    .modal-overlay{padding:10px;}
     .modal-photos{grid-template-columns:repeat(2,1fr);}
     .user-item{flex-direction:column;align-items:flex-start;gap:10px;}
+    .section-header{flex-wrap:wrap;gap:10px;}
+    .report-header{flex-wrap:wrap;gap:10px;}
+    .photos-head{flex-wrap:wrap;}
+    /* 탭이 많아도 깨지지 않게 가로 스크롤 */
+    .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
+    .tab-btn{flex:0 0 auto;white-space:nowrap;padding:9px 16px;}
+    .tabs::-webkit-scrollbar{display:none;}
+    [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr !important;}
+  }
+  @media(max-width:380px){
+    #app-main{padding:16px 10px;}
+    .stat-card .stat-num{font-size:22px;}
+    .stat-card{padding:12px 5px;}
+    .photo-count.need{font-size:16px;padding:12px 12px;}
+    .choice label{font-size:15px;padding:9px 13px;}
+    .btn{font-size:15px;padding:9px 16px;}
+    .report-item{padding:16px 14px;}
   }
 </style>
 </head>
@@ -197,6 +221,7 @@
       </label>
       <button class="btn btn-primary" style="width:100%;padding:13px;" onclick="doLogin()">로그인</button>
     </div>
+    <p style="text-align:center;font-size:12px;color:#BBA99B;margin-top:14px;">버전 2026.06.09 · 척도검사 직접입력 · 휴지통</p>
   </div>
 </div>
 
@@ -315,6 +340,7 @@
         <button class="tab-btn" onclick="switchAdminTab('accounts',this)">👤 계정 관리</button>
         <button class="tab-btn" onclick="switchAdminTab('reports',this)">📋 전체 보고서</button>
         <button class="tab-btn" onclick="switchAdminTab('survey',this)">🩺 척도검사</button>
+        <button class="tab-btn" onclick="switchAdminTab('trash',this)">🗑 휴지통</button>
       </div>
 
       <div id="atab-dashboard">
@@ -361,6 +387,14 @@
         </div>
         <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">1회기(사전)·5회기(사후) 작성 시 첨부된 검사지를 자동 분석합니다. <b>분석</b> 버튼을 누르면 사진을 읽어 점수를 코딩합니다.</p>
         <div id="survey-result-box"></div>
+      </div>
+
+      <div id="atab-trash" class="hidden">
+        <div class="section-header">
+          <h3>🗑 휴지통</h3>
+        </div>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">삭제한 보고서는 <b>30일간 보관</b>되며 언제든 복원할 수 있습니다. 30일이 지나면 자동으로 완전 삭제됩니다.</p>
+        <div id="trash-list"></div>
       </div>
     </div>
   </div>
@@ -518,10 +552,12 @@ async function getUsers() {
   const val = await fbGet('users');
   return val ? Object.values(val) : [];
 }
-async function getReports() {
+async function getReports(includeDeleted=false) {
   const val = await fbGet('reports');
   if (!val) return [];
-  return Object.values(val).sort((a,b) => b.createdAt > a.createdAt ? 1 : -1);
+  let arr = Object.values(val).sort((a,b) => b.createdAt > a.createdAt ? 1 : -1);
+  if (!includeDeleted) arr = arr.filter(r => !r.deleted);  // 휴지통 항목 제외
+  return arr;
 }
 async function saveUser(user) {
   return fbSet('users/' + user.id, user);
@@ -680,7 +716,7 @@ function switchTab(tab, btn) {
   if (tab === 'list') renderMyReports();
 }
 function switchAdminTab(tab, btn) {
-  ['dashboard','accounts','reports','survey'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
+  ['dashboard','accounts','reports','survey','trash'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
   document.querySelectorAll('#admin-section .tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('atab-'+tab).classList.remove('hidden');
   btn.classList.add('active');
@@ -688,6 +724,7 @@ function switchAdminTab(tab, btn) {
   if (tab === 'reports')  { renderAllReports(); populateFilterUser(); }
   if (tab === 'dashboard') renderAdminDashboard();
   if (tab === 'survey') renderSurveyTab();
+  if (tab === 'trash') renderTrash();
 }
 
 // ══════════════════════════════════════════════
@@ -1157,39 +1194,110 @@ async function saveEditReport(id){
   }
 }
 
-// ── 보고서 삭제 (본인 또는 관리자) ──
+// ── 보고서 삭제 = 휴지통으로 이동(30일 보관) ──
+const TRASH_DAYS = 30;
 async function deleteReport(id){
   const r = reportsCache[id] || allReportsCache.find(x=>x.id===id);
   if(!(currentUser && (currentUser.role==='admin' || (r && r.userId===currentUser.id)))){
     alert('삭제 권한이 없습니다.'); return;
   }
   const info = r ? `${r.target} · ${r.session} (${r.date})` : '';
-  if(!confirm(`이 보고서를 삭제할까요?\n${info}\n\n삭제하면 되돌릴 수 없습니다.`)) return;
+  if(!confirm(`이 보고서를 휴지통으로 옮길까요?\n${info}\n\n휴지통에서 ${TRASH_DAYS}일간 보관되며, 그 안에는 복원할 수 있습니다.`)) return;
   try{
-    await fbDelete('reports/' + id);
-    delete reportsCache[id];
+    await fbPatch('reports/' + id, { deleted:true, deletedAt:new Date().toISOString(), deletedBy: currentUser.name });
+    if(reportsCache[id]) reportsCache[id].deleted = true;
     allReportsCache = allReportsCache.filter(x=>x.id!==id);
     const modal = document.getElementById('report-modal');
     if(modal) modal.classList.add('hidden');
-    alert('🗑 보고서가 삭제되었습니다.');
-    if(currentUser.role==='admin'){
-      if(typeof renderAdminDashboard==='function') renderAdminDashboard();
-      if(typeof renderAllReports==='function') renderAllReports();
-      const surveyTab=document.getElementById('atab-survey');
-      if(surveyTab && !surveyTab.classList.contains('hidden') && typeof renderSurveyTab==='function') renderSurveyTab();
-    } else {
-      if(typeof renderMyReports==='function') renderMyReports();
-    }
+    alert('🗑 휴지통으로 옮겼습니다. (휴지통에서 복원 가능)');
+    refreshAfterReportChange();
   }catch(e){
     console.error('삭제 오류:', e);
     alert('삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.\n오류: ' + e.message);
   }
 }
 
+// 휴지통: 복원
+async function restoreReport(id){
+  try{
+    await fbPatch('reports/' + id, { deleted:null, deletedAt:null, deletedBy:null });
+    alert('♻️ 보고서를 복원했습니다.');
+    renderTrash();
+    refreshAfterReportChange();
+  }catch(e){ alert('복원 중 오류: ' + e.message); }
+}
+
+// 휴지통: 완전 삭제(복구 불가)
+async function purgeReport(id){
+  if(!confirm('이 보고서를 완전히 삭제할까요?\n\n완전 삭제하면 다시는 복구할 수 없습니다.')) return;
+  try{
+    await fbDelete('reports/' + id);
+    delete reportsCache[id];
+    alert('보고서가 완전히 삭제되었습니다.');
+    renderTrash();
+  }catch(e){ alert('삭제 중 오류: ' + e.message); }
+}
+
+// 30일 지난 휴지통 항목 자동 영구삭제
+async function purgeExpiredTrash(){
+  try{
+    const all = await getReports(true);
+    const now = Date.now();
+    const expired = all.filter(r => r.deleted && r.deletedAt && (now - new Date(r.deletedAt).getTime()) > TRASH_DAYS*86400000);
+    for(const r of expired){ await fbDelete('reports/' + r.id); }
+    if(expired.length) console.log(`휴지통 자동 정리: ${expired.length}건 영구삭제`);
+  }catch(e){ console.warn('휴지통 자동정리 실패:', e.message); }
+}
+
+// 보고서 변경 후 현재 보이는 화면 갱신
+function refreshAfterReportChange(){
+  if(currentUser && currentUser.role==='admin'){
+    if(typeof renderAdminDashboard==='function') renderAdminDashboard();
+    const rep=document.getElementById('atab-reports');
+    if(rep && !rep.classList.contains('hidden') && typeof renderAllReports==='function') renderAllReports();
+    const sv=document.getElementById('atab-survey');
+    if(sv && !sv.classList.contains('hidden') && typeof renderSurveyTab==='function') renderSurveyTab();
+  } else {
+    if(typeof renderMyReports==='function') renderMyReports();
+  }
+}
+
+// ── 휴지통 화면 렌더 ──
+async function renderTrash(){
+  const box = document.getElementById('trash-list');
+  if(!box) return;
+  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;">불러오는 중...</div>';
+  await purgeExpiredTrash();
+  const all = await getReports(true);
+  const trashed = all.filter(r=>r.deleted).sort((a,b)=> (b.deletedAt||'') > (a.deletedAt||'') ? 1 : -1);
+  if(!trashed.length){
+    box.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);padding:30px;">휴지통이 비어 있습니다.</div>';
+    return;
+  }
+  box.innerHTML = trashed.map(r=>{
+    const dAt = r.deletedAt ? new Date(r.deletedAt) : null;
+    const passed = dAt ? Math.floor((Date.now()-dAt.getTime())/86400000) : 0;
+    const left = Math.max(0, TRASH_DAYS - passed);
+    const leftColor = left<=7 ? 'var(--red)' : 'var(--gray)';
+    return `<div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:17px;font-weight:800;color:var(--brown);">${escTxt(r.target)} · ${escTxt(r.session)}</div>
+        <div style="font-size:14px;color:var(--gray);margin-top:3px;">방문 ${escTxt(r.date)} · 작성 ${escTxt(r.userName||'')}</div>
+        <div style="font-size:13px;color:${leftColor};font-weight:700;margin-top:4px;">🗑 ${dAt?dAt.toLocaleDateString('ko-KR'):''} 삭제 · <b>D-${left}</b> 후 자동 완전삭제</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="restoreReport('${r.id}')">♻️ 복원</button>
+        <button class="btn btn-danger btn-sm" onclick="purgeReport('${r.id}')">완전삭제</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // ══════════════════════════════════════════════
 //  관리자 대시보드
 // ══════════════════════════════════════════════
 async function renderAdminDashboard() {
+  purgeExpiredTrash();  // 30일 지난 휴지통 항목 자동 정리(백그라운드)
   const [users, reports] = await Promise.all([getUsers(), getReports()]);
   const nonAdmins = users.filter(u => u.role !== 'admin');
   const allTargets = nonAdmins.reduce((a,u) => a + (u.targets||[]).length, 0);
