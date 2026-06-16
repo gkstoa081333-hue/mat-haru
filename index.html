@@ -252,6 +252,7 @@
       <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('write',this)">✏️ 보고서 작성</button>
         <button class="tab-btn" onclick="switchTab('list',this)">📋 내 보고서</button>
+        <button class="tab-btn" onclick="switchTab('inquiry',this)">💬 문의하기</button>
       </div>
 
       <div id="tab-write">
@@ -334,6 +335,17 @@
         <div class="report-header"><h2>내 보고서 목록</h2></div>
         <div id="my-report-list" class="report-list"></div>
       </div>
+
+      <div id="tab-inquiry" class="hidden">
+        <div class="report-header"><h2>관리자에게 문의하기</h2></div>
+        <div class="card" style="margin-bottom:18px;">
+          <label class="label">문의 · 메시지 내용</label>
+          <textarea id="inq-text" placeholder="궁금한 점이나 전달할 내용을 자유롭게 적어주세요." style="min-height:110px;"></textarea>
+          <button class="btn btn-primary" style="margin-top:12px;padding:12px 26px;" onclick="sendInquiry()">📨 문의 보내기</button>
+        </div>
+        <h3 style="color:var(--brown);margin-bottom:12px;">📬 내 문의 내역</h3>
+        <div id="my-inquiry-list"></div>
+      </div>
     </div>
 
     <!-- 관리자 -->
@@ -345,6 +357,7 @@
         <button class="tab-btn" onclick="switchAdminTab('survey',this)">🩺 척도검사</button>
         <button class="tab-btn" onclick="switchAdminTab('trash',this)">🗑 휴지통</button>
         <button class="tab-btn" onclick="switchAdminTab('backup',this)">☁️ 드라이브 백업</button>
+        <button class="tab-btn" onclick="switchAdminTab('inquiry',this)" id="admin-inquiry-tab">💬 문의함</button>
       </div>
 
       <div id="atab-dashboard">
@@ -405,6 +418,12 @@
         <div class="section-header"><h3>☁️ 구글 드라이브 백업</h3></div>
         <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">업로드된 보고서 사진을 구글 드라이브에 백업합니다. 처음 한 번만 아래 설정을 마치면, 이후에는 버튼만 누르면 됩니다.</p>
         <div id="backup-body"></div>
+      </div>
+
+      <div id="atab-inquiry" class="hidden">
+        <div class="section-header"><h3>💬 참여자 문의함</h3></div>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">참여자가 보낸 문의입니다. 답변을 작성하면 참여자의 「문의하기」 화면에 표시됩니다.</p>
+        <div id="admin-inquiry-list"></div>
       </div>
     </div>
   </div>
@@ -719,23 +738,143 @@ function doLogout() {
 //  탭 전환
 // ══════════════════════════════════════════════
 function switchTab(tab, btn) {
-  ['write','list'].forEach(t => document.getElementById('tab-'+t).classList.add('hidden'));
+  ['write','list','inquiry'].forEach(t => document.getElementById('tab-'+t).classList.add('hidden'));
   document.querySelectorAll('#user-section .tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.remove('hidden');
   btn.classList.add('active');
   if (tab === 'list') renderMyReports();
+  if (tab === 'inquiry') renderMyInquiries();
 }
 function switchAdminTab(tab, btn) {
-  ['dashboard','accounts','reports','survey','trash','backup'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
+  ['dashboard','accounts','reports','survey','trash','backup','inquiry'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
   document.querySelectorAll('#admin-section .tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('atab-'+tab).classList.remove('hidden');
   btn.classList.add('active');
   if (tab === 'accounts') renderUserList();
   if (tab === 'reports')  { renderAllReports(); populateFilterUser(); }
   if (tab === 'dashboard') renderAdminDashboard();
+  if (tab === 'inquiry') renderAdminInquiries();
   if (tab === 'survey') renderSurveyTab();
   if (tab === 'trash') renderTrash();
   if (tab === 'backup') renderBackup();
+}
+
+// ══════════════════════════════════════════════
+//  문의 · 메시지 (참여자 ↔ 관리자)
+// ══════════════════════════════════════════════
+async function getMessages(){
+  const val = await fbGet('messages');
+  if(!val) return [];
+  return Object.values(val).sort((a,b)=> b.createdAt > a.createdAt ? 1 : -1);
+}
+function fmtDateTime(iso){
+  if(!iso) return '';
+  try{ return new Date(iso).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; }
+}
+
+// 참여자: 문의 보내기
+async function sendInquiry(){
+  const ta = document.getElementById('inq-text');
+  const text = ta.value.trim();
+  if(!text){ alert('문의 내용을 입력해주세요.'); return; }
+  const msg = {
+    id: Date.now().toString(),
+    userId: currentUser.id, userName: currentUser.name,
+    text, createdAt: new Date().toISOString(),
+    reply: null, repliedAt: null, repliedBy: null,
+    readByUser: true   // 본인이 보낸 글
+  };
+  try{
+    await fbSet('messages/' + msg.id, msg);
+    ta.value = '';
+    alert('📨 문의가 전송되었습니다. 관리자 답변은 이 화면에서 확인할 수 있어요.');
+    renderMyInquiries();
+  }catch(e){ alert('전송 중 오류가 발생했습니다.\n' + e.message); }
+}
+
+// 참여자: 내 문의 내역
+async function renderMyInquiries(){
+  const box = document.getElementById('my-inquiry-list');
+  if(!box) return;
+  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:16px;">불러오는 중...</div>';
+  const all = await getMessages();
+  const mine = all.filter(m => m.userId === currentUser.id);
+  if(!mine.length){ box.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);padding:24px;">아직 보낸 문의가 없습니다.</div>'; return; }
+  box.innerHTML = mine.map(m => `
+    <div class="card" style="margin-bottom:12px;">
+      <div style="font-size:13px;color:var(--gray);margin-bottom:6px;">🕒 ${fmtDateTime(m.createdAt)}</div>
+      <div style="font-size:16px;color:var(--brown);white-space:pre-wrap;">${escTxt(m.text)}</div>
+      ${m.reply ? `
+        <div style="margin-top:12px;background:var(--primary-xlight);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:13px;color:var(--primary);font-weight:800;margin-bottom:4px;">💬 관리자 답변 · ${escTxt(m.repliedBy||'')} (${fmtDateTime(m.repliedAt)})</div>
+          <div style="font-size:15px;color:var(--brown);white-space:pre-wrap;">${escTxt(m.reply)}</div>
+        </div>`
+        : `<div style="margin-top:10px;font-size:13px;color:var(--amber);font-weight:700;">⏳ 답변 대기 중</div>`}
+      <div style="text-align:right;margin-top:8px;"><button class="btn btn-ghost btn-sm" onclick="deleteInquiry('${m.id}')">삭제</button></div>
+    </div>`).join('');
+}
+
+// 관리자: 받은 문의함
+async function renderAdminInquiries(){
+  const box = document.getElementById('admin-inquiry-list');
+  if(!box) return;
+  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:16px;">불러오는 중...</div>';
+  const all = await getMessages();
+  if(!all.length){ box.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);padding:24px;">받은 문의가 없습니다.</div>'; return; }
+  // 미답변 먼저
+  all.sort((a,b)=>{ const ar=a.reply?1:0, br=b.reply?1:0; if(ar!==br) return ar-br; return b.createdAt>a.createdAt?1:-1; });
+  box.innerHTML = all.map(m => `
+    <div class="card" style="margin-bottom:12px;border-left:4px solid ${m.reply?'var(--green)':'var(--red)'};">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <div style="font-weight:800;color:var(--brown);font-size:16px;">👤 ${escTxt(m.userName||'')}</div>
+        <div style="font-size:13px;color:var(--gray);">🕒 ${fmtDateTime(m.createdAt)} ${m.reply?'· <span style="color:var(--green);font-weight:700;">답변완료</span>':'· <span style="color:var(--red);font-weight:700;">미답변</span>'}</div>
+      </div>
+      <div style="font-size:16px;color:var(--brown);white-space:pre-wrap;margin:8px 0;">${escTxt(m.text)}</div>
+      ${m.reply ? `
+        <div style="background:var(--primary-xlight);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
+          <div style="font-size:13px;color:var(--primary);font-weight:800;margin-bottom:4px;">내 답변 (${fmtDateTime(m.repliedAt)})</div>
+          <div style="font-size:15px;color:var(--brown);white-space:pre-wrap;">${escTxt(m.reply)}</div>
+        </div>` : ''}
+      <textarea id="reply-${m.id}" placeholder="${m.reply?'답변 수정...':'답변을 입력하세요...'}" style="min-height:70px;">${escTxt(m.reply||'')}</textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <button class="btn btn-danger btn-sm" onclick="deleteInquiry('${m.id}')">삭제</button>
+        <button class="btn btn-primary btn-sm" onclick="replyInquiry('${m.id}')">${m.reply?'답변 수정':'답변 보내기'}</button>
+      </div>
+    </div>`).join('');
+}
+
+// 관리자: 답변
+async function replyInquiry(id){
+  const ta = document.getElementById('reply-' + id);
+  const text = ta.value.trim();
+  if(!text){ alert('답변 내용을 입력해주세요.'); return; }
+  try{
+    await fbPatch('messages/' + id, { reply:text, repliedAt:new Date().toISOString(), repliedBy: currentUser.name, readByUser:false });
+    alert('💬 답변을 보냈습니다.');
+    renderAdminInquiries();
+    updateInquiryBadge();
+  }catch(e){ alert('답변 전송 중 오류: ' + e.message); }
+}
+
+// 문의 삭제 (관리자 또는 본인)
+async function deleteInquiry(id){
+  if(!confirm('이 문의를 삭제할까요?')) return;
+  try{
+    await fbDelete('messages/' + id);
+    if(currentUser.role==='admin'){ renderAdminInquiries(); updateInquiryBadge(); }
+    else renderMyInquiries();
+  }catch(e){ alert('삭제 중 오류: ' + e.message); }
+}
+
+// 관리자 탭 배지: 미답변 문의 수
+async function updateInquiryBadge(){
+  try{
+    const tab = document.getElementById('admin-inquiry-tab');
+    if(!tab) return;
+    const all = await getMessages();
+    const unanswered = all.filter(m => !m.reply).length;
+    tab.textContent = unanswered ? `💬 문의함 (${unanswered})` : '💬 문의함';
+  }catch(e){}
 }
 
 // ══════════════════════════════════════════════
@@ -1460,6 +1599,7 @@ async function renderTrash(){
 // ══════════════════════════════════════════════
 async function renderAdminDashboard() {
   purgeExpiredTrash();  // 30일 지난 휴지통 항목 자동 정리(백그라운드)
+  updateInquiryBadge(); // 미답변 문의 수 배지
   const [users, reports] = await Promise.all([getUsers(), getReports()]);
   const nonAdmins = users.filter(u => u.role !== 'admin');
   const allTargets = nonAdmins.reduce((a,u) => a + (u.targets||[]).length, 0);
