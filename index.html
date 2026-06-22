@@ -1,21 +1,21 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-<link rel="manifest" href="./manifest.json">
-<link rel="icon" href="./icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="./icon-192.png">
-<meta name="theme-color" content="#F57B42">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="./manifest.json">
-<link rel="icon" href="./icon-192.png" type="image/png">
-<link rel="apple-touch-icon" href="./icon-192.png">
-<meta name="theme-color" content="#F57B42">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <title>맛;하루(맛있는 하루) 방문보고 시스템</title>
+<meta name="description" content="공주시정신건강복지센터 노인자살예방사업 - 방문보고 및 척도검사 시스템">
+<!-- PWA(앱 설치) 설정 -->
+<meta name="theme-color" content="#E07A4F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="맛하루">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
@@ -392,7 +392,10 @@
 
         <div class="section-header">
           <h3>자원봉사자 계정</h3>
-          <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 계정 생성</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-amber btn-sm" onclick="showBatchUserModal()">+ 여러 개 한번에</button>
+            <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 계정 생성</button>
+          </div>
         </div>
         <div id="user-list" class="user-list"></div>
       </div>
@@ -473,6 +476,25 @@
     </div>
     <div id="create-err" class="login-err hidden"></div>
     <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="createAccount()">계정 생성</button>
+  </div>
+</div>
+
+<!-- 자원봉사자 일괄 생성 모달 -->
+<div id="batch-user-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">
+      <span>자원봉사자 계정 일괄 생성</span>
+      <button class="modal-close" onclick="document.getElementById('batch-user-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div style="background:#FFF7EF;border:1px solid var(--sand);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--brown);margin-bottom:14px;line-height:1.7;">
+      한 줄에 한 명씩, <b>이름, 아이디, 비밀번호</b> 순서로 쉼표(,)로 구분해 입력하세요. <b>최대 10명</b>까지 가능합니다.<br>
+      <span style="color:var(--gray);">예) 김봉사, kimbong, 1234</span>
+    </div>
+    <div class="field">
+      <textarea id="bu-text" placeholder="김봉사, kimbong, 1234&#10;이도움, leedo, 5678&#10;박나눔, parkna, 0000" style="min-height:170px;font-family:inherit;"></textarea>
+    </div>
+    <div id="bu-err" class="login-err hidden"></div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:4px;" onclick="createUsersBatch()">계정 일괄 생성</button>
   </div>
 </div>
 
@@ -1727,6 +1749,47 @@ async function createAccount() {
   alert(`✅ 자원봉사자 계정이 생성되었습니다.\nID: ${id}\n\n담당 대상자는 '대상자 관리'에서 배정해주세요.`);
 }
 
+// 자원봉사자 계정 일괄 생성 (최대 10)
+function showBatchUserModal(){
+  document.getElementById('bu-text').value = '';
+  document.getElementById('bu-err').classList.add('hidden');
+  document.getElementById('batch-user-modal').classList.remove('hidden');
+}
+async function createUsersBatch(){
+  const err = document.getElementById('bu-err');
+  const showErr = m => { err.textContent = m; err.classList.remove('hidden'); };
+  const lines = document.getElementById('bu-text').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!lines.length){ showErr('계정 정보를 한 줄 이상 입력해주세요.'); return; }
+  if(lines.length>10){ showErr('한 번에 최대 10명까지 생성할 수 있습니다.'); return; }
+
+  // 파싱 + 검증
+  const rows = [];
+  const idsInBatch = new Set();
+  for(let i=0;i<lines.length;i++){
+    const parts = lines[i].split(/[,\t]/).map(s=>s.trim());
+    if(parts.length<3 || !parts[0] || !parts[1] || !parts[2]){
+      showErr(`${i+1}번째 줄 형식 오류: "이름, 아이디, 비밀번호" 순서로 입력해주세요.`); return;
+    }
+    const [name, id, pw] = parts;
+    if(idsInBatch.has(id)){ showErr(`아이디 중복(입력 내): ${id}`); return; }
+    idsInBatch.add(id);
+    rows.push({ name, id, pw, role:'user', targets:[] });
+  }
+
+  // 기존 아이디 중복 확인
+  const existingUsers = await getUsers();
+  const exIds = new Set(existingUsers.map(u=>u.id));
+  const dup = rows.filter(r=>exIds.has(r.id)).map(r=>r.id);
+  if(dup.length){ showErr(`이미 사용 중인 아이디: ${dup.join(', ')}`); return; }
+
+  // 생성
+  let ok=0;
+  for(const r of rows){ try{ await saveUser(r); ok++; }catch(e){ /* 개별 실패 무시 */ } }
+  document.getElementById('batch-user-modal').classList.add('hidden');
+  renderUserList(); renderAdminDashboard();
+  alert(`✅ 자원봉사자 계정 ${ok}개가 생성되었습니다.\n\n담당 대상자는 '대상자 관리'에서 배정해주세요.`);
+}
+
 // ══════════════════════════════════════════════
 //  대상자(어르신) 관리
 // ══════════════════════════════════════════════
@@ -2401,13 +2464,25 @@ async function exportAllReportsExcel() {
   XLSX.writeFile(wb,`맛있는하루_전체보고서_${ds}.xlsx`);
 }
 </script>
+<!-- PWA Service Worker 등록 (실패해도 앱은 정상 동작) -->
 <script>
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("./service-worker.js")
-        .then(() => console.log("✅ PWA 준비 완료"))
-        .catch((err) => console.warn("⚠️ 등록 건너뜀:", err));
+        .then((reg) => {
+          console.log("✅ PWA Service Worker 등록 완료");
+          reg.addEventListener("updatefound", () => {
+            const nw = reg.installing;
+            nw && nw.addEventListener("statechange", () => {
+              if (nw.state === "installed" && navigator.serviceWorker.controller) {
+                console.log("💡 새 버전 준비됨 — 새로고침 시 적용");
+              }
+            });
+          });
+        })
+        .catch((err) => console.warn("⚠️ PWA 등록 건너뜀:", err));
     });
   }
 </script>
+</body>
 </html>
