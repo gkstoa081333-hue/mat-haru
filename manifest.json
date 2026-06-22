@@ -1,0 +1,72 @@
+{
+  "name": "맛하루(맛있는 하루) 방문보고 시스템",
+  "short_name": "맛하루",
+  "description": "공주시정신건강복지센터 노인자살예방사업 - 방문보고 및 척도검사 시스템",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#F57B42",
+  "categories": ["productivity", "utilities"],
+  "screenshots": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "보고서 작성",
+      "short_name": "보고서",
+      "description": "새로운 방문보고서를 작성합니다",
+      "url": "./index.html?page=write",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "내 보고서",
+      "short_name": "보고서 목록",
+      "description": "제출한 보고서를 확인합니다",
+      "url": "./index.html?page=list",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
