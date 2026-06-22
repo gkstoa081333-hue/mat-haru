@@ -374,7 +374,14 @@
 
       <div id="atab-accounts" class="hidden">
         <div class="section-header">
-          <h3>계정 관리</h3>
+          <h3>대상자(어르신) 관리</h3>
+          <button class="btn btn-primary btn-sm" onclick="showTargetCreateModal()">+ 대상자 추가</button>
+        </div>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 14px;">대상자를 먼저 등록하고 담당 자원봉사자를 배정합니다. 한 번에 최대 10명까지 등록할 수 있어요.</p>
+        <div id="target-list" style="margin-bottom:34px;"></div>
+
+        <div class="section-header">
+          <h3>자원봉사자 계정</h3>
           <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 계정 생성</button>
         </div>
         <div id="user-list" class="user-list"></div>
@@ -454,16 +461,43 @@
       <label class="label">권한</label>
       <select id="new-role"><option value="user">일반 사용자</option><option value="admin">관리자</option></select>
     </div>
-    <div class="field">
-      <label class="label">담당 대상자 추가</label>
-      <div style="display:flex;gap:8px;">
-        <input type="text" id="new-target-input" placeholder="대상자 이름 입력 후 추가" style="flex:1;">
-        <button class="btn btn-amber btn-sm" onclick="addNewTarget()">추가</button>
-      </div>
-      <div id="new-target-list" class="target-tags" style="margin-top:10px;"></div>
-    </div>
     <div id="create-err" class="login-err hidden"></div>
     <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="createAccount()">계정 생성</button>
+  </div>
+</div>
+
+<!-- 대상자 동시 추가 모달 -->
+<div id="target-create-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">
+      <span>대상자 추가</span>
+      <button class="modal-close" onclick="document.getElementById('target-create-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="field">
+      <label class="label">대상자 이름 <span class="req">*</span> <span style="font-weight:400;color:var(--gray);font-size:13px;">(한 줄에 한 명씩, 최대 10명)</span></label>
+      <textarea id="tc-names" placeholder="예)&#10;김영자&#10;박순례&#10;이정심" style="min-height:150px;"></textarea>
+    </div>
+    <div class="field">
+      <label class="label">담당 자원봉사자 배정 <span style="font-weight:400;color:var(--gray);font-size:13px;">(선택 · 나중에 배정 가능)</span></label>
+      <div id="tc-volunteers" class="choice-group" style="max-height:160px;overflow:auto;"></div>
+    </div>
+    <div id="tc-err" class="login-err hidden"></div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="createTargets()">대상자 등록</button>
+  </div>
+</div>
+
+<!-- 대상자 배정 편집 모달 -->
+<div id="target-assign-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-title">
+      <span id="ta-title">담당 자원봉사자 배정</span>
+      <button class="modal-close" onclick="document.getElementById('target-assign-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="field">
+      <label class="label">담당 자원봉사자</label>
+      <div id="ta-volunteers" class="choice-group" style="max-height:220px;overflow:auto;"></div>
+    </div>
+    <button class="btn btn-primary" style="width:100%;padding:12px;" onclick="saveTargetAssign()">배정 저장</button>
   </div>
 </div>
 
@@ -888,10 +922,18 @@ function setDefaultDateTime() {
 }
 
 async function loadTargetSelect() {
-  const user = await fbGet('users/' + currentUser.id);
   const sel = document.getElementById('f-target');
   sel.innerHTML = '<option value="">대상자 선택</option>';
-  (user?.targets || []).forEach(t => {
+  let names = [];
+  try{
+    const targets = await getTargets();
+    names = targets.filter(t => (t.assignedTo||[]).includes(currentUser.id)).map(t => t.name);
+  }catch(e){ console.warn(e); }
+  if(!names.length){  // 폴백: 기존 방식(마이그레이션 전)
+    const user = await fbGet('users/' + currentUser.id);
+    names = user?.targets || [];
+  }
+  names.forEach(t => {
     const opt = document.createElement('option');
     opt.value = t; opt.textContent = t; sel.appendChild(opt);
   });
@@ -1600,12 +1642,12 @@ async function renderTrash(){
 async function renderAdminDashboard() {
   purgeExpiredTrash();  // 30일 지난 휴지통 항목 자동 정리(백그라운드)
   updateInquiryBadge(); // 미답변 문의 수 배지
-  const [users, reports] = await Promise.all([getUsers(), getReports()]);
+  await ensureTargetsMigrated();
+  const [users, reports, targets] = await Promise.all([getUsers(), getReports(), getTargets()]);
   const nonAdmins = users.filter(u => u.role !== 'admin');
-  const allTargets = nonAdmins.reduce((a,u) => a + (u.targets||[]).length, 0);
   document.getElementById('stat-accounts').textContent = nonAdmins.length;
   document.getElementById('stat-reports').textContent = reports.length;
-  document.getElementById('stat-targets').textContent = allTargets;
+  document.getElementById('stat-targets').textContent = targets.length;
   const el = document.getElementById('recent-reports');
   const recent = reports.slice(0,5);
   if (!recent.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:24px 0;font-size:16px;">아직 제출된 보고서가 없습니다.</div>'; return; }
@@ -1616,16 +1658,18 @@ async function renderAdminDashboard() {
 //  계정 관리
 // ══════════════════════════════════════════════
 async function renderUserList() {
-  const users = await getUsers();
+  ensureTargetsMigrated();
+  renderTargetList();
+  const [users, targets] = await Promise.all([getUsers(), getTargets()]);
   const el = document.getElementById('user-list');
+  const countFor = uid => targets.filter(t => (t.assignedTo||[]).includes(uid)).length;
   el.innerHTML = users.map(u => `
     <div class="user-item">
       <div class="user-item-info">
         <h4>${u.name} &nbsp;<span class="badge ${u.role==='admin'?'badge-admin':'badge-user'}">${u.role==='admin'?'관리자':'담당자'}</span></h4>
-        <p>ID: ${u.id} &nbsp;|&nbsp; 대상자: ${(u.targets||[]).join(', ')||'없음'}</p>
+        <p>ID: ${u.id} &nbsp;|&nbsp; 담당 대상자: ${u.role==='admin'?'-':countFor(u.id)+'명'}</p>
       </div>
       <div class="user-item-actions">
-        ${u.id!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="openTargetModal('${u.id}')">대상자 편집</button>`:''}
         <button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${u.name}')">비밀번호 변경</button>
         ${u.id!=='admin'?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">삭제</button>`:''}
       </div>
@@ -1639,10 +1683,8 @@ async function deleteUser(id) {
 }
 
 function showCreateModal() {
-  newTargets = [];
-  ['new-name','new-id','new-pw','new-target-input'].forEach(id => document.getElementById(id).value='');
+  ['new-name','new-id','new-pw'].forEach(id => document.getElementById(id).value='');
   document.getElementById('new-role').value = 'user';
-  document.getElementById('new-target-list').innerHTML = '';
   document.getElementById('create-err').classList.add('hidden');
   document.getElementById('create-modal').classList.remove('hidden');
 }
@@ -1669,10 +1711,144 @@ async function createAccount() {
   if (!name||!id||!pw) { errEl.textContent='이름, 아이디, 비밀번호를 모두 입력해주세요.'; errEl.classList.remove('hidden'); return; }
   const existing = await fbGet('users/'+id);
   if (existing) { errEl.textContent='이미 사용 중인 아이디입니다.'; errEl.classList.remove('hidden'); return; }
-  await saveUser({ id, pw, role, name, targets:[...newTargets] });
+  await saveUser({ id, pw, role, name, targets:[] });
   document.getElementById('create-modal').classList.add('hidden');
   renderUserList(); renderAdminDashboard();
-  alert(`✅ 계정이 생성되었습니다.\nID: ${id}`);
+  alert(`✅ 자원봉사자 계정이 생성되었습니다.\nID: ${id}\n\n담당 대상자는 '대상자 관리'에서 배정해주세요.`);
+}
+
+// ══════════════════════════════════════════════
+//  대상자(어르신) 관리
+// ══════════════════════════════════════════════
+async function getTargets(){
+  const val = await fbGet('targets');
+  if(!val) return [];
+  return Object.values(val).sort((a,b)=> (a.name||'').localeCompare(b.name||'','ko'));
+}
+async function saveTarget(t){ await fbSet('targets/'+t.id, t); }
+async function deleteTargetEntry(id){
+  const t = (await getTargets()).find(x=>x.id===id);
+  if(!confirm(`대상자 '${t?t.name:''}'을(를) 삭제할까요?\n\n※ 이미 작성된 보고서는 그대로 남습니다. 목록에서만 제거됩니다.`)) return;
+  await fbDelete('targets/'+id);
+  renderTargetList(); renderAdminDashboard();
+}
+
+// 자원봉사자 이름 맵
+async function volunteerMap(){
+  const users = await getUsers();
+  const m = {};
+  users.filter(u=>u.role!=='admin').forEach(u=> m[u.id]=u.name);
+  return m;
+}
+
+async function renderTargetList(){
+  const box = document.getElementById('target-list');
+  if(!box) return;
+  box.innerHTML = '<div style="color:var(--gray);padding:14px;">불러오는 중...</div>';
+  await ensureTargetsMigrated();
+  const [targets, vmap] = await Promise.all([getTargets(), volunteerMap()]);
+  if(!targets.length){ box.innerHTML = '<div class="card" style="text-align:center;color:var(--gray);padding:24px;">등록된 대상자가 없습니다. ‘+ 대상자 추가’로 등록하세요.</div>'; return; }
+  box.innerHTML = targets.map(t=>{
+    const names = (t.assignedTo||[]).map(uid=>vmap[uid]).filter(Boolean);
+    const assigned = names.length ? names.map(n=>`<span class="answer-tag">${escTxt(n)}</span>`).join('') : '<span style="color:var(--amber);font-weight:700;font-size:14px;">미배정</span>';
+    return `<div class="card" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:17px;font-weight:800;color:var(--brown);">👵 ${escTxt(t.name)}</div>
+        <div style="margin-top:6px;">담당: ${assigned}</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="openTargetAssign('${t.id}')">담당 배정</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteTargetEntry('${t.id}')">삭제</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 자원봉사자 체크박스 HTML
+function volunteerChips(prefix, vmap, selected){
+  selected = selected || [];
+  const ids = Object.keys(vmap);
+  if(!ids.length) return '<span style="color:var(--gray);font-size:14px;">등록된 자원봉사자가 없습니다. 먼저 계정을 생성하세요.</span>';
+  return ids.map((uid,i)=>{
+    const id=`${prefix}-v-${i}`;
+    return `<span class="choice"><input type="checkbox" class="${prefix}-vol" id="${id}" value="${uid}" ${selected.includes(uid)?'checked':''}><label for="${id}">${escTxt(vmap[uid])}</label></span>`;
+  }).join('');
+}
+
+// 대상자 동시 추가
+async function showTargetCreateModal(){
+  const vmap = await volunteerMap();
+  document.getElementById('tc-names').value='';
+  document.getElementById('tc-err').classList.add('hidden');
+  document.getElementById('tc-volunteers').innerHTML = volunteerChips('tc', vmap, []);
+  document.getElementById('target-create-modal').classList.remove('hidden');
+}
+async function createTargets(){
+  const raw = document.getElementById('tc-names').value;
+  const err = document.getElementById('tc-err');
+  let names = raw.split('\n').map(s=>s.trim()).filter(Boolean);
+  names = [...new Set(names)]; // 중복 제거
+  if(!names.length){ err.textContent='대상자 이름을 한 명 이상 입력해주세요.'; err.classList.remove('hidden'); return; }
+  if(names.length>10){ err.textContent='한 번에 최대 10명까지 등록할 수 있습니다.'; err.classList.remove('hidden'); return; }
+  const assignedTo = [...document.querySelectorAll('.tc-vol:checked')].map(c=>c.value);
+  const existing = await getTargets();
+  const exNames = new Set(existing.map(t=>t.name));
+  let created=0, skipped=0;
+  for(const name of names){
+    if(exNames.has(name)){ skipped++; continue; }
+    const t = { id:'t'+Date.now()+Math.random().toString(36).slice(2,6), name, assignedTo:[...assignedTo], createdAt:new Date().toISOString() };
+    await saveTarget(t); created++;
+  }
+  document.getElementById('target-create-modal').classList.add('hidden');
+  renderTargetList(); renderAdminDashboard();
+  alert(`✅ 대상자 ${created}명 등록${skipped?` (중복 ${skipped}명 제외)`:''}되었습니다.`);
+}
+
+// 대상자별 담당 배정 편집
+let assigningTargetId = null;
+async function openTargetAssign(targetId){
+  assigningTargetId = targetId;
+  const [targets, vmap] = await Promise.all([getTargets(), volunteerMap()]);
+  const t = targets.find(x=>x.id===targetId);
+  if(!t) return;
+  document.getElementById('ta-title').textContent = `${t.name} · 담당 배정`;
+  document.getElementById('ta-volunteers').innerHTML = volunteerChips('ta', vmap, t.assignedTo||[]);
+  document.getElementById('target-assign-modal').classList.remove('hidden');
+}
+async function saveTargetAssign(){
+  if(!assigningTargetId) return;
+  const targets = await getTargets();
+  const t = targets.find(x=>x.id===assigningTargetId);
+  if(!t) return;
+  t.assignedTo = [...document.querySelectorAll('.ta-vol:checked')].map(c=>c.value);
+  await saveTarget(t);
+  document.getElementById('target-assign-modal').classList.add('hidden');
+  renderTargetList();
+  alert('✅ 담당 배정이 저장되었습니다.');
+}
+
+// 기존 user.targets → targets 노드 1회 이전 (데이터 보존)
+async function ensureTargetsMigrated(){
+  try{
+    const done = await fbGet('meta/targetsMigrated');
+    if(done) return;
+    const users = await getUsers();
+    const existing = await getTargets();
+    const byName = {}; existing.forEach(t=> byName[t.name]=t);
+    for(const u of users){
+      if(u.role==='admin') continue;
+      for(const name of (u.targets||[])){
+        if(byName[name]){
+          if(!byName[name].assignedTo.includes(u.id)){ byName[name].assignedTo.push(u.id); await saveTarget(byName[name]); }
+        }else{
+          const t = { id:'t'+Date.now()+Math.random().toString(36).slice(2,6), name, assignedTo:[u.id], createdAt:new Date().toISOString() };
+          byName[name]=t; await saveTarget(t);
+        }
+      }
+    }
+    await fbSet('meta/targetsMigrated', true);
+    console.log('대상자 마이그레이션 완료');
+  }catch(e){ console.warn('대상자 마이그레이션 실패:', e.message); }
 }
 
 // ── 대상자 편집 ──
