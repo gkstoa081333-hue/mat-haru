@@ -465,7 +465,7 @@
     <div class="field"><label class="label">회원 이름(어르신) <span class="req">*</span></label><input type="text" id="new-name" placeholder="예) 김영자"></div>
     <div class="field"><label class="label">아이디 <span class="req">*</span></label><input type="text" id="new-id" placeholder="로그인 아이디" autocomplete="off"></div>
     <div class="field"><label class="label">비밀번호 <span class="req">*</span></label><input type="password" id="new-pw" placeholder="비밀번호"></div>
-    <div class="field"><label class="label">담당 자원봉사자</label><input type="text" id="new-volunteer" placeholder="예) 홍길동 (선택)"></div>
+    <div class="field"><label class="label">담당 자원봉사자</label><input type="text" id="new-volunteer" placeholder="예) 홍길동 · 여러 명이면 쉼표로: 홍길동, 김영희"></div>
     <div class="field">
       <label class="label">권한</label>
       <select id="new-role"><option value="user">회원(일반)</option><option value="admin">관리자</option></select>
@@ -669,6 +669,10 @@ async function getReports(includeDeleted=false) {
 }
 async function saveUser(user) {
   return fbSet('users/' + user.id, user);
+}
+// 담당 자원봉사자 문자열을 쉼표/슬래시 등으로 분리 → 인원 구분
+function splitVolunteers(s){
+  return (s||'').split(/[,/·、;]/).map(x => x.trim()).filter(Boolean);
 }
 async function saveReport(report) {
   return fbSet('reports/' + report.id, report);
@@ -1678,10 +1682,11 @@ async function renderAdminDashboard() {
   updateInquiryBadge(); // 미답변 문의 수 배지
   const [users, reports] = await Promise.all([getUsers(), getReports()]);
   const members = users.filter(u => u.role !== 'admin');
-  const volunteers = new Set(members.map(u => (u.volunteer||'').trim()).filter(Boolean));
+  const vset = new Set();
+  members.forEach(u => splitVolunteers(u.volunteer).forEach(v => vset.add(v)));
   document.getElementById('stat-accounts').textContent = members.length;
   document.getElementById('stat-reports').textContent = reports.length;
-  document.getElementById('stat-targets').textContent = volunteers.size;
+  document.getElementById('stat-targets').textContent = vset.size;
   const el = document.getElementById('recent-reports');
   const recent = reports.slice(0,5);
   if (!recent.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:24px 0;font-size:16px;">아직 제출된 보고서가 없습니다.</div>'; return; }
@@ -1697,11 +1702,12 @@ async function renderUserList() {
   const admins  = users.filter(u => u.role === 'admin');
   const members = users.filter(u => u.role !== 'admin');
 
-  // 담당 자원봉사자별 그룹
+  // 담당 자원봉사자별 그룹 (한 회원에 여러 명이면 각 그룹에 표시)
   const groups = {};
   members.forEach(u => {
-    const key = (u.volunteer||'').trim() || '__none__';
-    (groups[key] = groups[key] || []).push(u);
+    const vols = splitVolunteers(u.volunteer);
+    if (!vols.length) { (groups['__none__'] = groups['__none__'] || []).push(u); }
+    else vols.forEach(v => { (groups[v] = groups[v] || []).push(u); });
   });
   const keys = Object.keys(groups).filter(k => k !== '__none__').sort((a,b)=>a.localeCompare(b,'ko'));
   if (groups['__none__']) keys.push('__none__');
@@ -1852,7 +1858,8 @@ async function createUsersBatch(){
     if(parts.length<3 || !parts[0] || !parts[1] || !parts[2]){
       showErr(`${i+1}번째 줄 형식 오류: "회원이름, 아이디, 비밀번호, 담당자원봉사자" 순서로 입력해주세요.`); return;
     }
-    const [name, id, pw, volunteer=''] = parts;
+    const [name, id, pw, ...rest] = parts;
+    const volunteer = rest.join(', ');  // 4번째 이후는 담당 자원봉사자(여러 명 쉼표 허용)
     if(idsInBatch.has(id)){ showErr(`아이디 중복(입력 내): ${id}`); return; }
     idsInBatch.add(id);
     rows.push({ name, id, pw, role:'user', volunteer, targets:[] });
@@ -2534,11 +2541,13 @@ async function exportAllReportsExcel() {
   let reports = await getReports();
   if (filterUser) reports = reports.filter(r => r.userId === filterUser);
   if (!reports.length) { alert('내보낼 보고서가 없습니다.'); return; }
-  const data=[['번호','대상자','담당자','방문날짜','방문시간','회기','활동내용','대상자반응및소감','특이사항','전반적상태','해당사항','사진수','제출일시']];
-  reports.forEach((r,i)=>data.push([i+1,r.target,r.userName,r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', '),r.photos.length,new Date(r.createdAt).toLocaleString('ko-KR')]));
+  const users = await getUsers();
+  const volMap = {}; users.forEach(u => volMap[u.id] = u.volunteer || '');
+  const data=[['번호','회원(대상)','담당 자원봉사자','방문날짜','방문시간','회기','활동내용','대상자반응및소감','특이사항','전반적상태','해당사항','사진수','제출일시']];
+  reports.forEach((r,i)=>data.push([i+1,r.target,(r.volunteer||volMap[r.userId]||''),r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', '),r.photos.length,new Date(r.createdAt).toLocaleString('ko-KR')]));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(data);
-  ws['!cols']=[5,12,10,12,8,22,30,30,20,12,30,6,18].map(w=>({wch:w}));
+  ws['!cols']=[5,12,14,12,8,22,30,30,20,12,30,6,18].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb,ws,'전체보고서');
   const d=new Date(), ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
   XLSX.writeFile(wb,`맛있는하루_전체보고서_${ds}.xlsx`);
