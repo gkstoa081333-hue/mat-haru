@@ -739,7 +739,7 @@ async function startApp() {
         saveSession(currentUser, fromLocal);     // 최신 정보로 갱신
         document.getElementById('loading-screen').classList.add('hidden');
         document.getElementById('page-app').classList.remove('hidden');
-        document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
+        document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'대상자'})`;
         if (currentUser.role === 'admin') {
           document.getElementById('admin-section').classList.remove('hidden');
           document.getElementById('user-section').classList.add('hidden');
@@ -788,7 +788,7 @@ async function doLogin() {
 
     document.getElementById('page-login').classList.add('hidden');
     document.getElementById('page-app').classList.remove('hidden');
-    document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'담당자'})`;
+    document.getElementById('nav-username').textContent = `${currentUser.name} (${currentUser.role==='admin'?'관리자':'대상자'})`;
 
     if (currentUser.role === 'admin') {
       document.getElementById('admin-section').classList.remove('hidden');
