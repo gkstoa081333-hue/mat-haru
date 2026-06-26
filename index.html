@@ -475,6 +475,22 @@
   </div>
 </div>
 
+<!-- 서비스 대상자 관리 모달 -->
+<div id="target-manage-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title">
+      <span id="tm-title">서비스 대상자 관리</span>
+      <button class="modal-close" onclick="document.getElementById('target-manage-modal').classList.add('hidden')">✕</button>
+    </div>
+    <p style="font-size:14px;color:var(--gray);margin-bottom:12px;line-height:1.6;">이 계정으로 보고할 <b>추가 대상자(어르신)</b>를 등록합니다. 회원 본인은 기본으로 포함됩니다.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <input type="text" id="tm-input" placeholder="대상자 이름 입력" style="flex:1;" onkeydown="if(event.key==='Enter')tmAdd()">
+      <button class="btn btn-amber btn-sm" onclick="tmAdd()">추가</button>
+    </div>
+    <div id="tm-list"></div>
+  </div>
+</div>
+
 <!-- 계정 정리 모달 -->
 <div id="cleanup-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
   <div class="modal" style="max-width:520px;">
@@ -972,34 +988,68 @@ function setDefaultDateTime() {
 
 async function loadTargetSelect() {
   const sel = document.getElementById('f-target');
-  // 회원 아이디로 로그인 → 그 회원이 곧 보고 대상(본인 자동 선택)
-  sel.innerHTML = `<option value="${escAttr(currentUser.name)}" selected>${escTxt(currentUser.name)}</option>`;
+  // 본인(회원) + 수동으로 추가된 서비스 대상자들
+  const user = (await fbGet('users/' + currentUser.id)) || currentUser;
+  const list = [user.name, ...((user.targets) || [])];
+  const uniq = [...new Set(list.filter(Boolean))];
+  sel.innerHTML = uniq.map((n,i) => `<option value="${escAttr(n)}"${i===0?' selected':''}>${escTxt(n)}</option>`).join('');
 }
 
-function addPhotos(input) {
-  const files = Array.from(input.files);
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const max = 1600; // 화질 개선 (600→1600): 확인·인쇄용으로 충분히 선명
-        let w = img.width, h = img.height;
-        if (w > max) { h = Math.round(h * max / w); w = max; }
-        if (h > max) { w = Math.round(w * max / h); h = max; }
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, w, h);
-        photos.push(canvas.toDataURL('image/jpeg', 0.88)); // 화질 개선 (0.5→0.88)
-        renderPhotoGrid();
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
+// 견고한 이미지 압축 (안드로이드 고화소/포맷 문제 대응)
+async function compressImageFile(file, max, quality){
+  if(!file || !(file.type||'').startsWith('image/')){
+    throw new Error('이미지 형식이 아닙니다');
+  }
+  let bmp=null, srcDraw=null, sw=0, sh=0;
+  // 1) createImageBitmap 우선 (대용량 메모리 효율 + 안드로이드 호환)
+  try{
+    bmp = await createImageBitmap(file);
+    sw = bmp.width; sh = bmp.height; srcDraw = bmp;
+  }catch(_){
+    // 2) Image 폴백 (+ onerror로 조용한 실패 방지)
+    const url = URL.createObjectURL(file);
+    try{
+      const im = await new Promise((res,rej)=>{
+        const x = new Image();
+        x.onload = ()=>res(x);
+        x.onerror = ()=>rej(new Error('이미지를 열 수 없습니다'));
+        x.src = url;
+      });
+      sw = im.naturalWidth; sh = im.naturalHeight; srcDraw = im;
+    } finally { URL.revokeObjectURL(url); }
+  }
+  if(!sw || !sh) throw new Error('이미지 크기 오류');
+  let w=sw, h=sh;
+  if(w>max){ h=Math.round(h*max/w); w=max; }
+  if(h>max){ w=Math.round(w*max/h); h=max; }
+  const canvas = document.createElement('canvas');
+  canvas.width=w; canvas.height=h;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
+  ctx.drawImage(srcDraw, 0, 0, w, h);
+  if(bmp && bmp.close) bmp.close();
+  let out='';
+  try{ out = canvas.toDataURL('image/jpeg', quality); }
+  catch(_){ out = canvas.toDataURL('image/jpeg'); }
+  if(!out || out.length < 100) throw new Error('이미지 변환 실패');
+  return out;
+}
+
+// 여러 파일 처리 공통 (실패 시 안내)
+async function handlePhotoFiles(input, max, quality, onEach){
+  const files = Array.from(input.files || []);
   input.value = '';
+  if(!files.length) return;
+  let fail = 0;
+  for(const file of files){
+    try{ onEach(await compressImageFile(file, max, quality)); }
+    catch(e){ console.warn('사진 처리 실패:', file && file.name, e); fail++; }
+  }
+  if(fail) alert(`사진 ${fail}장을 불러오지 못했습니다.\n\n• 사진이 매우 크거나(고화소) 형식이 호환되지 않을 수 있어요.\n• 갤러리에서 한 장씩 다시 선택하거나, ‘원본’ 대신 일반 화질로 보내보세요.`);
+}
+
+function addPhotos(input){
+  handlePhotoFiles(input, 1600, 0.85, d => { photos.push(d); renderPhotoGrid(); });
 }
 
 function renderPhotoGrid() {
@@ -1323,29 +1373,7 @@ function editReport(id){
 }
 
 function addEditPhotos(input){
-  const files = Array.from(input.files);
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const max = 1600;
-        let w = img.width, h = img.height;
-        if (w > max) { h = Math.round(h * max / w); w = max; }
-        if (h > max) { w = Math.round(w * max / h); h = max; }
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, w, h);
-        editPhotos.push(canvas.toDataURL('image/jpeg', 0.88));
-        renderEditPhotos();
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-  input.value = '';
+  handlePhotoFiles(input, 1600, 0.85, d => { editPhotos.push(d); renderEditPhotos(); });
 }
 
 function renderEditPhotos(){
@@ -1716,9 +1744,10 @@ async function renderUserList() {
     <div class="user-item">
       <div class="user-item-info">
         <h4>${escTxt(u.name)} &nbsp;<span class="badge ${u.role==='admin'?'badge-admin':'badge-user'}">${u.role==='admin'?'관리자':'회원'}</span></h4>
-        <p>ID: ${u.id}</p>
+        <p>ID: ${u.id}${(u.targets&&u.targets.length)?` &nbsp;|&nbsp; <span style="color:var(--primary);font-weight:700;">추가 대상자 ${u.targets.length}명</span>`:''}</p>
       </div>
       <div class="user-item-actions">
+        ${u.id!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="openTargetManage('${u.id}')">대상자 관리</button>`:''}
         ${u.id!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="openVolunteerEdit('${u.id}')">담당 수정</button>`:''}
         <button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${escAttr(u.name)}')">비밀번호 변경</button>
         ${u.id!=='admin'?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">삭제</button>`:''}
@@ -1752,6 +1781,45 @@ async function openVolunteerEdit(uid){
   if(v===null) return;
   await fbPatch('users/'+uid, { volunteer: v.trim() });
   renderUserList();
+}
+
+// ── 서비스 대상자 수동 관리(특정 계정에 추가) ──
+let tmUid = null, tmUser = null;
+async function openTargetManage(uid){
+  tmUid = uid;
+  tmUser = await fbGet('users/'+uid);
+  if(!tmUser) return;
+  if(!Array.isArray(tmUser.targets)) tmUser.targets = [];
+  document.getElementById('tm-title').textContent = `${tmUser.name} · 서비스 대상자`;
+  document.getElementById('tm-input').value = '';
+  tmRender();
+  document.getElementById('target-manage-modal').classList.remove('hidden');
+}
+function tmRender(){
+  const box = document.getElementById('tm-list');
+  const own = `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--primary-xlight);border-radius:8px;margin-bottom:8px;">
+    <b style="color:var(--brown);">${escTxt(tmUser.name)}</b><span style="color:var(--gray);font-size:13px;">(회원 본인 · 기본)</span></div>`;
+  const extras = (tmUser.targets||[]).map(n => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border:1px solid var(--sand);border-radius:8px;margin-bottom:8px;">
+      <span style="color:var(--brown);">👵 ${escTxt(n)}</span>
+      <button class="btn btn-danger btn-sm" onclick="tmRemove('${escAttr(n)}')">삭제</button>
+    </div>`).join('');
+  box.innerHTML = own + (extras || '<div style="color:var(--gray);font-size:14px;text-align:center;padding:10px;">추가된 대상자가 없습니다.</div>');
+}
+async function tmAdd(){
+  const inp = document.getElementById('tm-input');
+  const name = inp.value.trim();
+  if(!name) return;
+  if(name === tmUser.name || (tmUser.targets||[]).includes(name)){ alert('이미 있는 대상자입니다.'); return; }
+  tmUser.targets = [...(tmUser.targets||[]), name];
+  await fbPatch('users/'+tmUid, { targets: tmUser.targets });
+  inp.value = '';
+  tmRender(); renderUserList();
+}
+async function tmRemove(name){
+  tmUser.targets = (tmUser.targets||[]).filter(n => n !== name);
+  await fbPatch('users/'+tmUid, { targets: tmUser.targets });
+  tmRender(); renderUserList();
 }
 
 async function deleteUser(id) {
@@ -2342,28 +2410,7 @@ function updateLiveScore(){
   if(ue){ const lv=uclaLevel(u.total); ue.innerHTML = `UCLA 총점: <span style="color:${lv.color}">${u.total ?? '-'}${u.complete?(' · '+lv.label):' (미완료)'}</span>`; }
 }
 function addSurveyPhotos(input, kind){
-  Array.from(input.files).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const max = 1800; // 검사지는 글자 인식이 중요 → 더 선명하게
-        let w = img.width, h = img.height;
-        if (w > max) { h = Math.round(h * max / w); w = max; }
-        if (h > max) { w = Math.round(w * max / h); h = max; }
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, w, h);
-        surveyPhotos[kind].push(canvas.toDataURL('image/jpeg', 0.9));
-        renderSurveyPhotoGrid(kind);
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-  input.value = '';
+  handlePhotoFiles(input, 1800, 0.9, d => { surveyPhotos[kind].push(d); renderSurveyPhotoGrid(kind); });
 }
 function renderSurveyPhotoGrid(kind){
   const grid = document.getElementById(kind+'-grid');
