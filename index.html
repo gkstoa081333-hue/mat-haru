@@ -404,6 +404,7 @@
             </select>
             <button class="btn btn-amber btn-sm" onclick="exportSummaryExcel()">📊 대상자별 요약 엑셀</button>
             <button class="btn btn-ghost btn-sm" onclick="exportAllReportsExcel()">📋 전체 보고서 엑셀</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAllReports()">🗑 전체 삭제</button>
           </div>
         </div>
         <div id="target-summary-box" style="margin-bottom:20px;"></div>
@@ -424,8 +425,9 @@
       <div id="atab-trash" class="hidden">
         <div class="section-header">
           <h3>🗑 휴지통</h3>
+          <button class="btn btn-danger btn-sm" onclick="emptyTrash()">휴지통 비우기(완전삭제)</button>
         </div>
-        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">삭제한 보고서는 <b>30일간 보관</b>되며 언제든 복원할 수 있습니다. 30일이 지나면 자동으로 완전 삭제됩니다.</p>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">삭제한 보고서는 <b>30일간 보관</b>되며 언제든 복원할 수 있습니다. 30일이 지나면 자동으로 완전 삭제됩니다. ‘휴지통 비우기’를 누르면 사진까지 완전히 지워져 저장 공간이 줄고 속도가 빨라집니다.</p>
         <div id="trash-list"></div>
       </div>
 
@@ -1496,6 +1498,38 @@ async function purgeReport(id){
   }catch(e){ alert('삭제 중 오류: ' + e.message); }
 }
 
+// 전체 보고서 삭제 → 휴지통으로 이동(현재 필터 반영)
+async function deleteAllReports(){
+  const filterUser = document.getElementById('filter-user').value;
+  let reports = await getReports();         // 휴지통 제외
+  if(filterUser) reports = reports.filter(r => r.userId === filterUser);
+  if(!reports.length){ alert('삭제할 보고서가 없습니다.'); return; }
+  const scope = filterUser ? '선택한 계정의 ' : '전체 ';
+  if(!confirm(`${scope}보고서 ${reports.length}건을 휴지통으로 보낼까요?\n\n휴지통에서 30일간 복원할 수 있습니다.`)) return;
+  const now = new Date().toISOString();
+  let ok=0;
+  for(const r of reports){
+    try{ await fbPatch('reports/' + r.id, { deleted:true, deletedAt:now, deletedBy: currentUser.name }); ok++; }catch(e){}
+  }
+  allReportsCache = [];
+  alert(`🗑 ${ok}건을 휴지통으로 옮겼습니다.`);
+  renderAllReports(); renderAdminDashboard();
+}
+
+// 휴지통 비우기 → 완전 삭제(사진 포함, 복구 불가)
+async function emptyTrash(){
+  const all = await getReports(true);
+  const trashed = all.filter(r => r.deleted);
+  if(!trashed.length){ alert('휴지통이 비어 있습니다.'); return; }
+  if(!confirm(`휴지통의 ${trashed.length}건을 완전히 삭제할까요?\n\n⚠️ 사진을 포함해 영구 삭제되며 복구할 수 없습니다.\n(저장 공간이 줄어 속도가 빨라집니다)`)) return;
+  let ok=0;
+  for(const r of trashed){
+    try{ await fbDelete('reports/' + r.id); delete reportsCache[r.id]; ok++; }catch(e){}
+  }
+  alert(`✅ ${ok}건을 완전히 삭제했습니다.`);
+  renderTrash(); renderAdminDashboard();
+}
+
 // 30일 지난 휴지통 항목 자동 영구삭제
 async function purgeExpiredTrash(){
   try{
@@ -2166,6 +2200,11 @@ async function populateFilterUser() {
   sel.innerHTML = '<option value="">전체 (계정별로 보기)</option>' + users.filter(u=>u.role!=='admin').map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
 }
 
+let _allGroups = [];
+let _flatReports = [];
+let _flatShown = 20;
+const REPORT_PAGE = 20;
+
 async function renderAllReports() {
   const filterUser = document.getElementById('filter-user').value;
   const el = document.getElementById('all-report-list');
@@ -2177,30 +2216,53 @@ async function renderAllReports() {
   if (!reports.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">보고서가 없습니다.</div>'; return; }
 
   if (filterUser) {
-    // 특정 계정 선택 → 평면 목록
-    el.innerHTML = reports.map(r => reportItemHTML(r)).join('');
+    // 특정 계정 → 평면 목록 + 더보기(20건씩)
+    _flatReports = reports;
+    _flatShown = REPORT_PAGE;
+    renderFlatReports();
   } else {
-    // 전체 → 참여자 계정별로 분리(접기/펼치기)
+    // 전체 → 계정별 그룹(접힌 채 시작, 펼칠 때만 렌더 → 초기 로딩 가벼움)
     const byUser = {};
     reports.forEach(r => {
       const k = r.userId || '_unknown';
       if(!byUser[k]) byUser[k] = { name: r.userName || '(이름 없음)', list: [] };
       byUser[k].list.push(r);
     });
-    const groups = Object.values(byUser).sort((a,b)=> a.name.localeCompare(b.name,'ko'));
-    el.innerHTML = groups.map(grp => {
+    _allGroups = Object.values(byUser).sort((a,b)=> a.name.localeCompare(b.name,'ko'));
+    el.innerHTML = _allGroups.map((grp,i) => {
       const latest = grp.list.reduce((m,r)=> (!m || r.date>m) ? r.date : m, '');
-      const items = grp.list.map(r => reportItemHTML(r)).join('');
-      return `<details class="user-group" open>
+      return `<details class="user-group" ontoggle="lazyRenderGroup(this, ${i})">
         <summary class="user-group-head">
           <span>👤 ${escTxt(grp.name)} <span class="arr">▶</span></span>
           <span class="user-group-count">${grp.list.length}건 · 최근 ${latest||'-'}</span>
         </summary>
-        <div style="margin-top:12px;">${items}</div>
+        <div class="grp-body" style="margin-top:12px;"></div>
       </details>`;
     }).join('');
   }
 }
+
+// 그룹을 펼칠 때만 그 그룹의 보고서를 렌더(지연 로딩)
+function lazyRenderGroup(d, i){
+  if(!d.open) return;
+  const body = d.querySelector('.grp-body');
+  if(!body || body.dataset.loaded) return;
+  body.innerHTML = (_allGroups[i]?.list || []).map(r => reportItemHTML(r)).join('');
+  body.dataset.loaded = '1';
+}
+
+// 평면 목록 + 더보기
+function renderFlatReports(){
+  const el = document.getElementById('all-report-list');
+  const slice = _flatReports.slice(0, _flatShown);
+  let html = slice.map(r => reportItemHTML(r)).join('');
+  if(_flatReports.length > _flatShown){
+    const remain = _flatReports.length - _flatShown;
+    html += `<div style="text-align:center;margin-top:16px;"><button class="btn btn-ghost" onclick="showMoreReports()">더 보기 (${remain}건 남음)</button></div>`;
+  }
+  el.innerHTML = html;
+}
+function showMoreReports(){ _flatShown += REPORT_PAGE; renderFlatReports(); }
 
 // ══════════════════════════════════════════════
 //  대상자별 요약 테이블
