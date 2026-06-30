@@ -1928,7 +1928,7 @@ async function renderUserList() {
       <table class="acct-table">
         <thead><tr>
           <th onclick="sortUsers('name')" style="cursor:pointer;user-select:none;">회원 이름${userSortArrow('name')}</th>
-          <th>아이디</th>
+          <th onclick="sortUsers('id')" style="cursor:pointer;user-select:none;">아이디${userSortArrow('id')}</th>
           <th onclick="sortUsers('volunteer')" style="cursor:pointer;user-select:none;">담당 자원봉사자${userSortArrow('volunteer')}</th>
           <th>추가 대상자</th><th>관리</th>
         </tr></thead>
