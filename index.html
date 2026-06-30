@@ -1872,13 +1872,27 @@ async function renderAdminDashboard() {
 // ══════════════════════════════════════════════
 //  계정 관리
 // ══════════════════════════════════════════════
+// 계정 표 정렬 상태
+let userSort = { key:'name', dir:1 };  // dir: 1 오름차순, -1 내림차순
+function userSortArrow(k){ return userSort.key===k ? (userSort.dir>0?' ▲':' ▼') : ' ⇅'; }
+function sortUsers(key){
+  if(userSort.key===key) userSort.dir *= -1;
+  else { userSort.key=key; userSort.dir=1; }
+  renderUserList();
+}
+
 async function renderUserList() {
   const users = await getUsers();
   const el = document.getElementById('user-list');
   const kw = (document.getElementById('user-search')?.value || '').trim().toLowerCase();
   const admins  = users.filter(u => u.role === 'admin');
-  let members = users.filter(u => u.role !== 'admin')
-                     .sort((a,b)=> (a.name||'').localeCompare(b.name||'','ko'));
+  let members = users.filter(u => u.role !== 'admin');
+  // 정렬(이름/담당 자원봉사자)
+  members.sort((a,b)=>{
+    const va = (a[userSort.key]||'').toString();
+    const vb = (b[userSort.key]||'').toString();
+    return va.localeCompare(vb,'ko') * userSort.dir;
+  });
   if (kw) {
     members = members.filter(u =>
       (u.name||'').toLowerCase().includes(kw) ||
@@ -1913,7 +1927,10 @@ async function renderUserList() {
     <div class="acct-wrap">
       <table class="acct-table">
         <thead><tr>
-          <th>회원 이름</th><th>아이디</th><th>담당 자원봉사자</th><th>추가 대상자</th><th>관리</th>
+          <th onclick="sortUsers('name')" style="cursor:pointer;user-select:none;">회원 이름${userSortArrow('name')}</th>
+          <th>아이디</th>
+          <th onclick="sortUsers('volunteer')" style="cursor:pointer;user-select:none;">담당 자원봉사자${userSortArrow('volunteer')}</th>
+          <th>추가 대상자</th><th>관리</th>
         </tr></thead>
         <tbody>${body}</tbody>
       </table>
