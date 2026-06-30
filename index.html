@@ -162,6 +162,20 @@
   .user-item-info h4{font-size:16px;font-weight:700;}
   .user-item-info p{font-size:14px;color:var(--gray);margin-top:2px;}
   .user-item-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  /* 계정 관리 표 */
+  .acct-wrap{overflow-x:auto;border:1px solid var(--sand);border-radius:12px;-webkit-overflow-scrolling:touch;}
+  .acct-table{width:100%;border-collapse:collapse;font-size:14px;min-width:580px;}
+  .acct-table th{background:var(--cream);color:var(--brown);font-weight:800;text-align:left;padding:11px 12px;border-bottom:2px solid var(--sand);white-space:nowrap;}
+  .acct-table td{padding:8px 12px;border-bottom:1px solid #F0E6DC;vertical-align:middle;}
+  .acct-table tbody tr:last-child td{border-bottom:none;}
+  .acct-table .muted{color:var(--gray);white-space:nowrap;}
+  .acct-table .acct-center{text-align:center;}
+  .acct-table .acct-actions{white-space:nowrap;}
+  .acct-table .acct-actions .btn{margin-right:6px;}
+  .acct-admin{background:#FFF7EF;}
+  .cell-input{width:100%;min-width:90px;padding:7px 9px;border:1px solid transparent;border-radius:7px;font-size:14px;background:transparent;font-family:inherit;color:var(--brown);}
+  .cell-input:hover{border-color:var(--sand);}
+  .cell-input:focus{border-color:var(--primary);background:#fff;outline:none;}
   .target-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .target-tag{display:flex;align-items:center;gap:6px;background:var(--primary-xlight);color:var(--primary);border-radius:20px;padding:4px 12px;font-size:14px;font-weight:600;}
   .target-tag button{background:none;border:none;cursor:pointer;color:var(--primary);font-size:15px;line-height:1;}
@@ -391,7 +405,8 @@
             <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 회원 추가</button>
           </div>
         </div>
-        <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">회원(어르신)마다 아이디를 발급하고 담당 자원봉사자를 등록합니다. 회원 아이디로 로그인하면 그 회원의 보고서를 작성합니다.</p>
+        <p style="font-size:14px;color:var(--gray);margin:-6px 0 12px;">표에서 <b>이름·담당 자원봉사자</b> 칸을 직접 고쳐 입력하면 바로 저장됩니다. 검색으로 빠르게 찾을 수 있어요.</p>
+        <input id="user-search" placeholder="🔍 이름 · 아이디 · 담당 자원봉사자 검색" oninput="renderUserList()" style="width:100%;padding:10px 14px;margin-bottom:14px;border:1px solid var(--sand);border-radius:10px;font-size:15px;">
         <div id="user-list" class="user-list"></div>
       </div>
 
@@ -404,6 +419,7 @@
             </select>
             <button class="btn btn-amber btn-sm" onclick="exportSummaryExcel()">📊 대상자별 요약 엑셀</button>
             <button class="btn btn-ghost btn-sm" onclick="exportAllReportsExcel()">📋 전체 보고서 엑셀</button>
+            <button class="btn btn-ghost btn-sm" onclick="migrateReportPhotos()">🚀 속도 최적화</button>
             <button class="btn btn-danger btn-sm" onclick="deleteAllReports()">🗑 전체 삭제</button>
           </div>
         </div>
@@ -694,6 +710,28 @@ function splitVolunteers(s){
 }
 async function saveReport(report) {
   return fbSet('reports/' + report.id, report);
+}
+// ── 사진 분리 저장 (목록 로딩 속도 개선) ──
+// reportPhotos/{id} = { activity:[...], phq9:[...], ucla:[...] }
+async function savePhotoBundle(id, bundle){ return fbSet('reportPhotos/' + id, bundle); }
+async function loadPhotoBundle(id, fallbackReport){
+  let b = null;
+  try{ b = await fbGet('reportPhotos/' + id); }catch(e){}
+  if(b && (b.activity || b.phq9 || b.ucla)) {
+    return { activity: b.activity||[], phq9: b.phq9||[], ucla: b.ucla||[] };
+  }
+  // 폴백: 분리 전(기존) 보고서는 본문에 사진이 들어있음
+  const r = fallbackReport || {};
+  return {
+    activity: r.photos || [],
+    phq9: (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [],
+    ucla: (r.survey && r.survey.ucla && r.survey.ucla.photos) || []
+  };
+}
+async function deletePhotoBundle(id){ try{ await fbDelete('reportPhotos/' + id); }catch(e){} }
+function reportPhotoCount(r){
+  if(typeof r.photoCount === 'number') return r.photoCount;
+  return (r.photos || []).length;  // 기존 보고서 폴백
 }
 
 // ══════════════════════════════════════════════
@@ -1096,6 +1134,7 @@ async function submitReport() {
 
   const sessionLabels = {'1':'1회기 · 차돌박이 순두부찌개','2':'2회기 · 서울식 소불고기전골','3':'3회기 · 우삼겹 된장찌개','4':'4회기 · 논현동 부대찌개','5':'5회기 · 대파 고추장 불고기'};
   let survey = null;
+  let svPhq = [], svUcla = [];
   if (session === '1' || session === '5') {
     const phqR = readSurveyResponses('phq9', 9);
     const uclaR = readSurveyResponses('ucla', 20);
@@ -1105,14 +1144,17 @@ async function submitReport() {
     if (missing > 0 && missing < 29) {
       if (!confirm(`검사 문항 중 ${missing}개가 아직 비어 있습니다.\n비워둔 채로 제출할까요?`)) return;
     }
+    svPhq = [...surveyPhotos.phq9];
+    svUcla = [...surveyPhotos.ucla];
     survey = {
       type: session==='1' ? '사전' : '사후',
-      phq9: { responses: phqR, result: { scores: phqR, total: pRes.total, complete: pRes.complete }, photos: [...surveyPhotos.phq9] },
-      ucla: { responses: uclaR, result: { scores: uRes.scores, total: uRes.total, complete: uRes.complete }, photos: [...surveyPhotos.ucla] }
+      phq9: { responses: phqR, result: { scores: phqR, total: pRes.total, complete: pRes.complete } },
+      ucla: { responses: uclaR, result: { scores: uRes.scores, total: uRes.total, complete: uRes.complete } }
     };
   }
+  const id = Date.now().toString();
   const report = {
-    id: Date.now().toString(),
+    id,
     userId: currentUser.id, userName: currentUser.name,
     volunteer: currentUser.volunteer || '',
     date, time, target,
@@ -1121,13 +1163,15 @@ async function submitReport() {
     note: note || '없음',
     status, concerns,
     survey,
-    photos: [...photos],
+    photoCount: photos.length,
+    surveyPhotoCount: { phq9: svPhq.length, ucla: svUcla.length },
     createdAt: new Date().toISOString()
   };
 
   try {
     const btn = document.querySelector('.submit-box .btn');
     if (btn) { btn.disabled = true; btn.textContent = '제출 중...'; }
+    await savePhotoBundle(id, { activity: [...photos], phq9: svPhq, ucla: svUcla });
     await saveReport(report);
     photos = []; renderPhotoGrid();
     loadTargetSelect();
@@ -1170,7 +1214,7 @@ function reportItemHTML(r) {
         <div class="report-item-title">📌 ${r.target} · ${r.session}</div>
         <div class="report-item-meta">📅 ${r.date} ${r.time} &nbsp;|&nbsp; 담당: ${r.userName}</div>
       </div>
-      <div style="font-size:14px;color:var(--gray);">사진 ${r.photos.length}장</div>
+      <div style="font-size:14px;color:var(--gray);">사진 ${reportPhotoCount(r)}장</div>
     </div>
     <div class="report-item-tags">
       <span class="tag">${r.session.split('·')[0].trim()}</span>
@@ -1191,6 +1235,16 @@ async function showReport(id) {
     reportsCache[id] = report;
   }
   if (!report) return;
+  // 분리 저장된 사진을 불러와 report에 채움(이후 렌더/다운로드 코드와 호환)
+  if (!report._photosLoaded) {
+    const b = await loadPhotoBundle(id, report);
+    report.photos = b.activity;
+    if (report.survey) {
+      if (report.survey.phq9) report.survey.phq9.photos = b.phq9;
+      if (report.survey.ucla) report.survey.ucla.photos = b.ucla;
+    }
+    report._photosLoaded = true;
+  }
   document.getElementById('modal-title-text').textContent = `${report.target} · ${report.session}`;
   document.getElementById('modal-body').innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
@@ -1318,9 +1372,15 @@ function renderStatusValue(status){
   return `<span class="answer-tag ${warn?'warn':''}" style="${warn?'':'background:var(--primary-xlight);color:var(--primary);'}">${escTxt(status)}</span>`;
 }
 
-function editReport(id){
+async function editReport(id){
   const r = reportsCache[id];
   if(!r) return;
+  if(!r._photosLoaded){
+    const b = await loadPhotoBundle(id, r);
+    r.photos = b.activity;
+    if(r.survey){ if(r.survey.phq9) r.survey.phq9.photos=b.phq9; if(r.survey.ucla) r.survey.ucla.photos=b.ucla; }
+    r._photosLoaded = true;
+  }
   editingReportId = id;
   editPhotos = [...(r.photos||[])];
 
@@ -1422,6 +1482,8 @@ async function saveEditReport(id){
   if (!status)   { alert('대상자의 전반적인 상태를 선택해주세요.'); return; }
   if (editPhotos.length < 2) { alert('사진을 최소 2장 이상 올려주세요.'); return; }
 
+  const svPhq = (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [];
+  const svUcla = (r.survey && r.survey.ucla && r.survey.ucla.photos) || [];
   const updated = {
     ...r,
     date, time, target,
@@ -1429,15 +1491,30 @@ async function saveEditReport(id){
     activity, reaction,
     note: note || '없음',
     status, concerns,
-    photos: [...editPhotos],
+    photoCount: editPhotos.length,
+    surveyPhotoCount: { phq9: svPhq.length, ucla: svUcla.length },
     updatedAt: new Date().toISOString()
   };
+  delete updated.photos;          // 본문에서 사진 분리
+  delete updated._photosLoaded;
+  if (updated.survey) {
+    updated.survey = JSON.parse(JSON.stringify(updated.survey));
+    if (updated.survey.phq9) delete updated.survey.phq9.photos;
+    if (updated.survey.ucla) delete updated.survey.ucla.photos;
+  }
 
   const btn = document.getElementById('e-save-btn');
   try{
     if(btn){ btn.disabled = true; btn.textContent = '저장 중...'; }
-    await saveReport(updated);     // 같은 id로 덮어쓰기
-    reportsCache[id] = updated;
+    await savePhotoBundle(id, { activity: [...editPhotos], phq9: svPhq, ucla: svUcla });
+    await saveReport(updated);     // 같은 id로 덮어쓰기(사진 제외)
+    // 캐시: 화면 호환 위해 사진 다시 채움
+    const cached = { ...updated, photos: [...editPhotos], _photosLoaded: true };
+    if (cached.survey) {
+      if (cached.survey.phq9) cached.survey.phq9.photos = svPhq;
+      if (cached.survey.ucla) cached.survey.ucla.photos = svUcla;
+    }
+    reportsCache[id] = cached;
     alert('✅ 보고서가 수정되었습니다.');
     document.getElementById('report-modal').classList.add('hidden');
     // 목록 갱신
@@ -1492,6 +1569,7 @@ async function purgeReport(id){
   if(!confirm('이 보고서를 완전히 삭제할까요?\n\n완전 삭제하면 다시는 복구할 수 없습니다.')) return;
   try{
     await fbDelete('reports/' + id);
+    await deletePhotoBundle(id);
     delete reportsCache[id];
     alert('보고서가 완전히 삭제되었습니다.');
     renderTrash();
@@ -1516,6 +1594,43 @@ async function deleteAllReports(){
   renderAllReports(); renderAdminDashboard();
 }
 
+// 기존 보고서 사진을 분리 저장으로 이전(1회) → 목록 속도 개선
+async function migrateReportPhotos(){
+  if(!confirm('기존 보고서의 사진을 분리 저장해 목록 불러오기 속도를 개선합니다.\n\n보고서가 많으면 몇 분 걸릴 수 있어요. 진행할까요?\n(데이터는 그대로 보존됩니다)')) return;
+  const all = await getReports(true);  // 휴지통 포함 전부
+  const targets = all.filter(r =>
+    (r.photos && r.photos.length) ||
+    (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) ||
+                  (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length)))
+  );
+  if(!targets.length){ alert('이미 최적화되어 있습니다. 추가로 옮길 사진이 없습니다.'); return; }
+  if(!confirm(`${targets.length}건의 보고서 사진을 옮깁니다. 시작할까요?`)) return;
+  let ok=0, fail=0;
+  for(const r of targets){
+    try{
+      const bundle = {
+        activity: r.photos || [],
+        phq9: (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [],
+        ucla: (r.survey && r.survey.ucla && r.survey.ucla.photos) || []
+      };
+      await savePhotoBundle(r.id, bundle);     // 1) 사진을 별도 노드에 저장
+      const clean = { ...r, photoCount: bundle.activity.length, surveyPhotoCount: { phq9: bundle.phq9.length, ucla: bundle.ucla.length } };
+      delete clean.photos;
+      delete clean._photosLoaded;
+      if(clean.survey){
+        clean.survey = JSON.parse(JSON.stringify(clean.survey));
+        if(clean.survey.phq9) delete clean.survey.phq9.photos;
+        if(clean.survey.ucla) delete clean.survey.ucla.photos;
+      }
+      await saveReport(clean);                  // 2) 본문에서 사진 제거(가벼워짐)
+      reportsCache[r.id] = null; delete reportsCache[r.id];
+      ok++;
+    }catch(e){ console.warn('최적화 실패', r.id, e); fail++; }
+  }
+  alert(`✅ 최적화 완료: ${ok}건 처리${fail?` (실패 ${fail}건)`:''}\n\n목록 불러오기가 빨라집니다. 새로고침 후 확인하세요.`);
+  renderAllReports();
+}
+
 // 휴지통 비우기 → 완전 삭제(사진 포함, 복구 불가)
 async function emptyTrash(){
   const all = await getReports(true);
@@ -1524,7 +1639,7 @@ async function emptyTrash(){
   if(!confirm(`휴지통의 ${trashed.length}건을 완전히 삭제할까요?\n\n⚠️ 사진을 포함해 영구 삭제되며 복구할 수 없습니다.\n(저장 공간이 줄어 속도가 빨라집니다)`)) return;
   let ok=0;
   for(const r of trashed){
-    try{ await fbDelete('reports/' + r.id); delete reportsCache[r.id]; ok++; }catch(e){}
+    try{ await fbDelete('reports/' + r.id); await deletePhotoBundle(r.id); delete reportsCache[r.id]; ok++; }catch(e){}
   }
   alert(`✅ ${ok}건을 완전히 삭제했습니다.`);
   renderTrash(); renderAdminDashboard();
@@ -1671,7 +1786,7 @@ async function runBackup(token){
   blog('✅ 인증 완료. 백업을 시작합니다.');
   const reports = await getReports();      // 휴지통 제외
   // 사진이 있는 보고서만
-  const withPhotos = reports.filter(r => (r.photos&&r.photos.length) || (r.survey&&((r.survey.phq9&&r.survey.phq9.photos&&r.survey.phq9.photos.length)||(r.survey.ucla&&r.survey.ucla.photos&&r.survey.ucla.photos.length))));
+  const withPhotos = reports.filter(r => reportPhotoCount(r) > 0 || (r.surveyPhotoCount && (r.surveyPhotoCount.phq9 || r.surveyPhotoCount.ucla)) || (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length))));
   if(!withPhotos.length){ blog('백업할 사진이 없습니다.'); if(btn){btn.disabled=false;btn.textContent='☁️ 구글 드라이브로 사진 백업 시작';} return; }
 
   blog(`총 ${withPhotos.length}건의 보고서를 백업합니다.`);
@@ -1688,11 +1803,10 @@ async function runBackup(token){
     const base = `${safe(r.userName)}_${safe(r.target)}_${safe(r.date)}_${safe(sess)}`;
     // 활동 사진
     const list = [];
-    (r.photos||[]).forEach((p,i)=> list.push([`${base}_활동${i+1}.jpg`, p]));
-    if(r.survey){
-      (r.survey.phq9?.photos||[]).forEach((p,i)=> list.push([`${base}_PHQ9_${i+1}.jpg`, p]));
-      (r.survey.ucla?.photos||[]).forEach((p,i)=> list.push([`${base}_UCLA_${i+1}.jpg`, p]));
-    }
+    const bundle = await loadPhotoBundle(r.id, r);
+    (bundle.activity||[]).forEach((p,i)=> list.push([`${base}_활동${i+1}.jpg`, p]));
+    (bundle.phq9||[]).forEach((p,i)=> list.push([`${base}_PHQ9_${i+1}.jpg`, p]));
+    (bundle.ucla||[]).forEach((p,i)=> list.push([`${base}_UCLA_${i+1}.jpg`, p]));
     for(const [fname, durl] of list){
       total++;
       try{ await driveUpload(token, fname, runId, durl); okCount++; blog(`  ⬆️ ${fname}`); }
@@ -1761,50 +1875,58 @@ async function renderAdminDashboard() {
 async function renderUserList() {
   const users = await getUsers();
   const el = document.getElementById('user-list');
+  const kw = (document.getElementById('user-search')?.value || '').trim().toLowerCase();
   const admins  = users.filter(u => u.role === 'admin');
-  const members = users.filter(u => u.role !== 'admin');
+  let members = users.filter(u => u.role !== 'admin')
+                     .sort((a,b)=> (a.name||'').localeCompare(b.name||'','ko'));
+  if (kw) {
+    members = members.filter(u =>
+      (u.name||'').toLowerCase().includes(kw) ||
+      (u.id||'').toLowerCase().includes(kw) ||
+      (u.volunteer||'').toLowerCase().includes(kw)
+    );
+  }
 
-  // 담당 자원봉사자별 그룹 (한 회원에 여러 명이면 각 그룹에 표시)
-  const groups = {};
-  members.forEach(u => {
-    const vols = splitVolunteers(u.volunteer);
-    if (!vols.length) { (groups['__none__'] = groups['__none__'] || []).push(u); }
-    else vols.forEach(v => { (groups[v] = groups[v] || []).push(u); });
-  });
-  const keys = Object.keys(groups).filter(k => k !== '__none__').sort((a,b)=>a.localeCompare(b,'ko'));
-  if (groups['__none__']) keys.push('__none__');
+  const adminRow = u => `<tr class="acct-admin">
+    <td><b>${escTxt(u.name)}</b> <span class="badge badge-admin">관리자</span></td>
+    <td class="muted">${u.id}</td>
+    <td class="muted" colspan="2">관리자 계정</td>
+    <td class="acct-actions"><button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${escAttr(u.name)}')">비번</button></td>
+  </tr>`;
 
-  const itemHTML = u => `
-    <div class="user-item">
-      <div class="user-item-info">
-        <h4>${escTxt(u.name)} &nbsp;<span class="badge ${u.role==='admin'?'badge-admin':'badge-user'}">${u.role==='admin'?'관리자':'회원'}</span></h4>
-        <p>ID: ${u.id}${(u.targets&&u.targets.length)?` &nbsp;|&nbsp; <span style="color:var(--primary);font-weight:700;">추가 대상자 ${u.targets.length}명</span>`:''}</p>
-      </div>
-      <div class="user-item-actions">
-        ${u.id!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="openTargetManage('${u.id}')">대상자 관리</button>`:''}
-        ${u.id!=='admin'?`<button class="btn btn-ghost btn-sm" onclick="openVolunteerEdit('${u.id}')">담당 수정</button>`:''}
-        <button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${escAttr(u.name)}')">비밀번호 변경</button>
-        ${u.id!=='admin'?`<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">삭제</button>`:''}
-      </div>
-    </div>`;
+  const memberRow = u => `<tr>
+    <td><input class="cell-input" value="${escAttr(u.name||'')}" onchange="updateUserField('${u.id}','name',this.value)"></td>
+    <td class="muted">${u.id}</td>
+    <td><input class="cell-input" value="${escAttr(u.volunteer||'')}" placeholder="미등록 (쉼표로 여러 명)" onchange="updateUserField('${u.id}','volunteer',this.value)"></td>
+    <td class="acct-center"><button class="btn btn-ghost btn-sm" onclick="openTargetManage('${u.id}')">${(u.targets&&u.targets.length)? u.targets.length+'명' : '추가'}</button></td>
+    <td class="acct-actions">
+      <button class="btn btn-amber btn-sm" onclick="openAdminPwModal('${u.id}','${escAttr(u.name)}')">비번</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.id}')">삭제</button>
+    </td>
+  </tr>`;
 
-  let html = '';
-  if (admins.length) html += `<div style="margin-bottom:18px;">${admins.map(itemHTML).join('')}</div>`;
+  const body = admins.map(adminRow).join('') +
+    (members.map(memberRow).join('') ||
+      `<tr><td colspan="5" style="text-align:center;color:var(--gray);padding:18px;">${kw?'검색 결과가 없습니다.':'등록된 회원이 없습니다.'}</td></tr>`);
 
-  html += keys.map(k => {
-    const list = groups[k];
-    const isNone = k === '__none__';
-    const title = isNone ? '담당 미등록' : '담당: ' + escTxt(k);
-    const color = isNone ? 'var(--amber)' : 'var(--primary)';
-    return `<details open style="margin-bottom:12px;border:1px solid var(--sand);border-radius:12px;overflow:hidden;">
-      <summary style="padding:12px 16px;background:var(--cream);cursor:pointer;font-weight:800;color:${color};font-size:16px;list-style:none;">
-        👤 ${title} <span style="color:var(--gray);font-weight:600;font-size:14px;">(${list.length}명)</span>
-      </summary>
-      <div style="padding:12px;">${list.map(itemHTML).join('')}</div>
-    </details>`;
-  }).join('');
+  el.innerHTML = `
+    <div class="acct-wrap">
+      <table class="acct-table">
+        <thead><tr>
+          <th>회원 이름</th><th>아이디</th><th>담당 자원봉사자</th><th>추가 대상자</th><th>관리</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:13px;color:var(--gray);">회원 ${members.length}명${kw?' (검색됨)':''} · 이름·담당자 칸을 고치면 자동 저장됩니다.</div>`;
+}
 
-  el.innerHTML = html || '<div class="card" style="text-align:center;color:var(--gray);padding:24px;">등록된 회원이 없습니다.</div>';
+// 표에서 셀 직접 수정 → 즉시 저장
+async function updateUserField(uid, field, value){
+  try{
+    await fbPatch('users/' + uid, { [field]: value.trim() });
+    renderAdminDashboard();  // 담당자 수 등 통계 갱신
+  }catch(e){ alert('저장 중 오류가 발생했습니다: ' + e.message); }
 }
 
 // 담당 자원봉사자만 간단 수정
@@ -2653,7 +2775,7 @@ async function exportAllReportsExcel() {
   const users = await getUsers();
   const volMap = {}; users.forEach(u => volMap[u.id] = u.volunteer || '');
   const data=[['번호','회원(대상)','담당 자원봉사자','방문날짜','방문시간','회기','활동내용','대상자반응및소감','특이사항','전반적상태','해당사항','사진수','제출일시']];
-  reports.forEach((r,i)=>data.push([i+1,r.target,(r.volunteer||volMap[r.userId]||''),r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', '),r.photos.length,new Date(r.createdAt).toLocaleString('ko-KR')]));
+  reports.forEach((r,i)=>data.push([i+1,r.target,(r.volunteer||volMap[r.userId]||''),r.date,r.time,r.session,r.activity,r.reaction,r.note,r.status||'',(r.concerns||[]).join(', '),reportPhotoCount(r),new Date(r.createdAt).toLocaleString('ko-KR')]));
   const wb=XLSX.utils.book_new();
   const ws=XLSX.utils.aoa_to_sheet(data);
   ws['!cols']=[5,12,14,12,8,22,30,30,20,12,30,6,18].map(w=>({wch:w}));
