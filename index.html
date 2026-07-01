@@ -60,6 +60,7 @@
   .choice label:hover{border-color:var(--primary-light);}
   .choice input:checked + label{background:var(--primary);border-color:var(--primary);color:#fff;}
   .choice.warn input:checked + label{background:var(--red);border-color:var(--red);color:#fff;}
+  .survey-missing{border:2px solid var(--red)!important;border-radius:10px;background:#FDF2F2;padding:10px 12px!important;margin:6px 0;}
   .choice input:focus-visible + label{outline:2px solid var(--primary);outline-offset:2px;}
   .risk-note{background:#FEECEC;border:1.5px solid var(--red);border-radius:10px;padding:11px 15px;font-size:15px;color:var(--red);font-weight:700;margin-top:12px;}
   .answer-tag{display:inline-block;padding:5px 13px;border-radius:20px;font-size:15px;font-weight:700;margin:3px 4px 3px 0;background:var(--primary-xlight);color:var(--primary);}
@@ -1170,12 +1171,18 @@ async function submitReport() {
   if (session === '1' || session === '5') {
     const phqR = readSurveyResponses('phq9', 9);
     const uclaR = readSurveyResponses('ucla', 20);
+    // 미완료 문항 전체 수집(PHQ-9 → UCLA 순)
+    const missList = [];
+    for(let i=0;i<9;i++){ if(phqR[i]==null) missList.push('phq9-q'+i); }
+    for(let i=0;i<20;i++){ if(uclaR[i]==null) missList.push('ucla-q'+i); }
+    if(missList.length){
+      markSurveyMissing(missList);  // 미완료 문항 모두 빨간 테두리
+      alert(`1·5회기는 척도검사(PHQ-9 · UCLA)를 모두 완료해야 제출할 수 있습니다.\n\n답하지 않은 문항이 ${missList.length}개 있습니다.\n미완료 문항으로 이동합니다.`);
+      scrollToSurveyItem(missList[0]);
+      return;
+    }
     const pRes = scorePhq9(phqR);
     const uRes = scoreUcla(uclaR);
-    const missing = phqR.filter(x=>x==null).length + uclaR.filter(x=>x==null).length;
-    if (missing > 0 && missing < 29) {
-      if (!confirm(`검사 문항 중 ${missing}개가 아직 비어 있습니다.\n비워둔 채로 제출할까요?`)) return;
-    }
     svPhq = [...surveyPhotos.phq9];
     svUcla = [...surveyPhotos.ucla];
     survey = {
@@ -2610,9 +2617,9 @@ function surveyItemRow(prefix, idx, text, options){
   const name = `${prefix}-q${idx}`;
   const chips = options.map((o,j)=>{
     const id=`${name}-${j}`;
-    return `<span class="choice"><input type="radio" name="${name}" id="${id}" value="${o.v}" onchange="updateLiveScore()"><label for="${id}">${escTxt(o.t)}</label></span>`;
+    return `<span class="choice"><input type="radio" name="${name}" id="${id}" value="${o.v}" onchange="updateLiveScore();clearSurveyMissing('${name}')"><label for="${id}">${escTxt(o.t)}</label></span>`;
   }).join('');
-  return `<div style="padding:10px 0;border-bottom:1px solid #DCEAF6;">
+  return `<div id="item-${name}" style="padding:10px 0;border-bottom:1px solid #DCEAF6;">
     <div style="font-size:15px;font-weight:600;color:var(--brown);margin-bottom:7px;">${idx+1}. ${escTxt(text)}</div>
     <div class="choice-group">${chips}</div>
   </div>`;
@@ -2660,6 +2667,31 @@ function readSurveyResponses(prefix, count){
     arr.push(el ? parseInt(el.value,10) : null);
   }
   return arr;
+}
+// 미완료 문항 빨간 표시 / 해제
+function markSurveyMissing(names){
+  document.querySelectorAll('.survey-missing').forEach(e => e.classList.remove('survey-missing'));
+  names.forEach(n => { const el = document.getElementById('item-'+n); if(el) el.classList.add('survey-missing'); });
+}
+function clearSurveyMissing(name){
+  const el = document.getElementById('item-'+name);
+  if(el) el.classList.remove('survey-missing');
+}
+// 미완료 문항으로 스크롤 + 강조 + 포커스
+function scrollToSurveyItem(name){
+  const el = document.getElementById('item-' + name);
+  if(!el) return;
+  const dt = el.closest('details');
+  if(dt && !dt.open) dt.open = true;  // 접혀 있으면 펼치기
+  setTimeout(()=>{
+    el.scrollIntoView({ behavior:'smooth', block:'center' });
+    const orig = el.style.backgroundColor;
+    el.style.transition = 'background-color .3s';
+    el.style.backgroundColor = '#FFF3CD';
+    setTimeout(()=>{ el.style.backgroundColor = orig || ''; }, 1600);
+    const radio = el.querySelector('input[type=radio]');
+    if(radio){ try{ radio.focus({ preventScroll:true }); }catch(e){} }
+  }, dt && !dt.open ? 120 : 0);
 }
 // 실시간 총점 표시
 function updateLiveScore(){
