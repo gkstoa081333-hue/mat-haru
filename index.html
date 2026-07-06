@@ -344,6 +344,13 @@
               <div id="survey-form"></div>
             </div>
           </div>
+          <div class="field hidden" id="satisfaction-box">
+            <div style="background:#FFF3E9;border:1.5px solid #F0A882;border-radius:12px;padding:16px;">
+              <div style="font-size:18px;font-weight:800;color:#C2673A;margin-bottom:4px;">📝 프로그램 만족도 조사 <span style="color:var(--red);font-size:14px;">(5회기 필수)</span></div>
+              <p style="font-size:14px;color:var(--gray);margin-bottom:14px;">어르신께 여쭤보며 함께 작성해주세요. 모든 문항은 필수입니다.</p>
+              <div id="satisfaction-form"></div>
+            </div>
+          </div>
           <div class="submit-box">
             <p>✅ 모든 내용을 확인하셨나요? 제출 후에도 <b>「내 보고서」</b>에서 수정할 수 있습니다.</p>
             <button class="btn btn-primary" style="padding:13px 40px;font-size:17px;" onclick="submitReport()">담당자 확인 · 보고서 제출</button>
@@ -375,6 +382,7 @@
         <button class="tab-btn" onclick="switchAdminTab('accounts',this)">👤 계정 관리</button>
         <button class="tab-btn" onclick="switchAdminTab('reports',this)">📋 전체 보고서</button>
         <button class="tab-btn" onclick="switchAdminTab('survey',this)">🩺 척도검사</button>
+        <button class="tab-btn" onclick="switchAdminTab('vsurvey',this)">🧡 자원봉사자 만족도</button>
         <button class="tab-btn" onclick="switchAdminTab('trash',this)">🗑 휴지통</button>
         <button class="tab-btn" onclick="switchAdminTab('backup',this)">☁️ 드라이브 백업</button>
         <button class="tab-btn" onclick="switchAdminTab('inquiry',this)" id="admin-inquiry-tab">💬 문의함</button>
@@ -450,6 +458,15 @@
         <div class="section-header"><h3>☁️ 구글 드라이브 백업</h3></div>
         <p style="font-size:14px;color:var(--gray);margin:-6px 0 16px;">업로드된 보고서 사진을 구글 드라이브에 백업합니다. 처음 한 번만 아래 설정을 마치면, 이후에는 버튼만 누르면 됩니다.</p>
         <div id="backup-body"></div>
+      </div>
+
+      <div id="atab-vsurvey" class="hidden">
+        <div class="section-header">
+          <h3>🧡 자원봉사자 만족도</h3>
+          <button class="btn btn-amber btn-sm" onclick="exportVolunteerSurveyExcel()">📊 엑셀 내보내기</button>
+        </div>
+        <div id="vsurvey-link-box"></div>
+        <div id="vsurvey-list"></div>
       </div>
 
       <div id="atab-inquiry" class="hidden">
@@ -919,7 +936,7 @@ function switchTab(tab, btn) {
   if (tab === 'inquiry') renderMyInquiries();
 }
 function switchAdminTab(tab, btn) {
-  ['dashboard','accounts','reports','survey','trash','backup','inquiry'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
+  ['dashboard','accounts','reports','survey','vsurvey','trash','backup','inquiry'].forEach(t => document.getElementById('atab-'+t).classList.add('hidden'));
   document.querySelectorAll('#admin-section .tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('atab-'+tab).classList.remove('hidden');
   btn.classList.add('active');
@@ -928,6 +945,7 @@ function switchAdminTab(tab, btn) {
   if (tab === 'dashboard') renderAdminDashboard();
   if (tab === 'inquiry') renderAdminInquiries();
   if (tab === 'survey') renderSurveyTab();
+  if (tab === 'vsurvey') renderVolunteerSurveys();
   if (tab === 'trash') renderTrash();
   if (tab === 'backup') renderBackup();
 }
@@ -1191,6 +1209,31 @@ async function submitReport() {
       ucla: { responses: uclaR, result: { scores: uRes.scores, total: uRes.total, complete: uRes.complete } }
     };
   }
+
+  // 대상자 만족도(5회기 필수)
+  let satisfaction = null;
+  if (session === '5') {
+    const satR = readSurveyResponses('sat', 8);
+    const gender  = (document.querySelector('input[name="sat-gender"]:checked')||{}).value || '';
+    const age     = document.getElementById('sat-age').value.trim();
+    const center  = (document.querySelector('input[name="sat-center"]:checked')||{}).value || '';
+    const comment = document.getElementById('sat-comment').value.trim();
+    const satMiss = [];
+    for(let i=0;i<8;i++){ if(satR[i]==null) satMiss.push('sat-q'+i); }
+    if(satMiss.length || !gender || !age || !center){
+      markSurveyMissing(satMiss);
+      const lack = [];
+      if(!gender) lack.push('성별');
+      if(!age) lack.push('연령');
+      if(satMiss.length) lack.push(`만족도 문항 ${satMiss.length}개`);
+      if(!center) lack.push('센터 인지 여부');
+      alert(`5회기는 만족도 조사를 모두 작성해야 제출할 수 있습니다.\n\n미작성: ${lack.join(', ')}`);
+      if(satMiss.length) scrollToSurveyItem(satMiss[0]);
+      else document.getElementById('satisfaction-box').scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+    satisfaction = { gender, age: (Number(age)||age), center, responses: satR, comment };
+  }
   const id = Date.now().toString();
   const report = {
     id,
@@ -1202,6 +1245,7 @@ async function submitReport() {
     note: note || '없음',
     status, concerns,
     survey,
+    satisfaction,
     photoCount: photos.length,
     surveyPhotoCount: { phq9: svPhq.length, ucla: svUcla.length },
     createdAt: new Date().toISOString()
@@ -1995,6 +2039,71 @@ async function openVolunteerEdit(uid){
   renderUserList();
 }
 
+// ── 자원봉사자 만족도 ──
+function volunteerSurveyUrl(){
+  const base = location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, '');
+  return base + 'volunteer-survey.html';
+}
+async function renderVolunteerSurveys(){
+  const url = volunteerSurveyUrl();
+  document.getElementById('vsurvey-link-box').innerHTML = `
+    <div style="background:var(--cream);border:1px solid var(--sand);border-radius:12px;padding:16px;margin-bottom:18px;">
+      <div style="font-weight:800;margin-bottom:8px;">🔗 자원봉사자에게 이 링크를 공유하세요</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input type="text" id="vsurvey-url" value="${escAttr(url)}" readonly style="flex:1;min-width:200px;padding:9px;border:1px solid var(--sand);border-radius:8px;font-size:13px;">
+        <button class="btn btn-primary btn-sm" onclick="copyVsurveyUrl()">복사</button>
+        <button class="btn btn-ghost btn-sm" onclick="window.open('${escAttr(url)}','_blank')">열기</button>
+      </div>
+      <p style="font-size:13px;color:var(--gray);margin:8px 0 0;">로그인 없이 접속해 작성할 수 있습니다. 제출된 결과는 아래에 모입니다.</p>
+    </div>`;
+  const box = document.getElementById('vsurvey-list');
+  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:16px;">불러오는 중...</div>';
+  let data = {};
+  try{ data = await fbGet('volunteerSurveys') || {}; }catch(e){}
+  const list = Object.values(data).filter(Boolean).sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!list.length){ box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px;">아직 제출된 만족도가 없습니다.</div>'; return; }
+  const avgAll = (list.reduce((s,v)=> s + ((v.responses||[]).reduce((a,x)=>a+(x||0),0)/((v.responses||[]).length||1)), 0)/list.length).toFixed(1);
+  box.innerHTML = `<div style="font-size:14px;color:var(--brown);margin-bottom:10px;">총 <b>${list.length}명</b> 제출 · 전체 평균 <b>${avgAll}</b>점</div>` +
+    list.map(v=>{
+      const r = v.responses||[];
+      const avg = r.length ? (r.reduce((s,x)=>s+(x||0),0)/r.length).toFixed(1) : '-';
+      const d = v.createdAt ? new Date(v.createdAt).toLocaleString('ko-KR') : '';
+      return `<div class="card" style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+          <b>${escTxt(v.name||'(무기명)')}</b>
+          <span style="color:var(--gray);font-size:13px;">${escTxt(v.gender||'')} · ${escTxt(String(v.age||'-'))}세 · 평균 ${avg}점</span>
+        </div>
+        ${v.comment?`<div style="margin-top:6px;font-size:14px;color:var(--brown);">💬 ${escTxt(v.comment)}</div>`:''}
+        <div style="margin-top:6px;font-size:12px;color:var(--gray);">${d}</div>
+      </div>`;
+    }).join('');
+}
+function copyVsurveyUrl(){
+  const el = document.getElementById('vsurvey-url');
+  el.select(); el.setSelectionRange(0,9999);
+  const done = ()=>alert('링크가 복사되었습니다.');
+  if(navigator.clipboard){ navigator.clipboard.writeText(el.value).then(done).catch(()=>{ document.execCommand('copy'); done(); }); }
+  else { document.execCommand('copy'); done(); }
+}
+async function exportVolunteerSurveyExcel(){
+  let data = {};
+  try{ data = await fbGet('volunteerSurveys') || {}; }catch(e){}
+  const list = Object.values(data).filter(Boolean).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  if(!list.length){ alert('내보낼 자료가 없습니다.'); return; }
+  const header = ['번호','이름','성별','연령','문1','문2','문3','문4','문5','문6','문7','문8','평균','의견','제출일시'];
+  const rows = [header];
+  list.forEach((v,i)=>{
+    const r = v.responses||[];
+    const avg = r.length ? (r.reduce((s,x)=>s+(x||0),0)/r.length).toFixed(2) : '';
+    rows.push([i+1, v.name||'', v.gender||'', v.age||'', ...Array.from({length:8},(_,k)=>r[k]??''), avg, v.comment||'', v.createdAt?new Date(v.createdAt).toLocaleString('ko-KR'):'']);
+  });
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[5,12,6,6,6,6,6,6,6,6,6,6,8,30,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws,'자원봉사자만족도');
+  const d=new Date(),ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb,`자원봉사자만족도_${ds}.xlsx`);
+}
+
 // ── 회기 품목(메뉴) 설정 ──
 function showSessionModal(){
   const box = document.getElementById('session-fields');
@@ -2563,6 +2672,18 @@ const UCLA_ITEMS = [
 ];
 const PHQ9_OPTIONS = [{v:0,t:'전혀 아님'},{v:1,t:'며칠'},{v:2,t:'일주일 이상'},{v:3,t:'거의 매일'}];
 const UCLA_OPTIONS = [{v:1,t:'전혀'},{v:2,t:'드물게'},{v:3,t:'가끔'},{v:4,t:'항상'}];
+// 대상자(참여자) 만족도 8문항 (5회기 필수)
+const SAT_ITEMS = [
+  '프로그램에 전반적으로 만족하십니까?',
+  '밀키트 메뉴는 어르신께서 드시기에 적절했습니까?',
+  '음식의 맛과 양은 만족스러웠습니까?',
+  '요리 방법은 이해하기 쉬웠습니까?',
+  '식사 준비나 식사에 도움이 되었다고 느끼십니까?',
+  '혼자 식사하는 것이 전보다 나아졌다고 느끼십니까?',
+  '기분이나 마음 상태에 도움이 되었습니까?',
+  '비슷한 프로그램이 있다면 다시 참여하시겠습니까?'
+];
+const SAT_OPTIONS = [{v:1,t:'매우 그렇지 않다'},{v:2,t:'그렇지 않다'},{v:3,t:'보통'},{v:4,t:'그렇다'},{v:5,t:'매우 그렇다'}];
 
 function phq9Level(total){
   if(total==null) return {label:'-', color:'var(--gray)'};
@@ -2611,6 +2732,45 @@ function onSessionChange(){
   } else {
     box.classList.add('hidden');
   }
+  // 대상자 만족도는 5회기에만 (필수)
+  const satBox = document.getElementById('satisfaction-box');
+  if(v==='5'){
+    satBox.classList.remove('hidden');
+    const sf = document.getElementById('satisfaction-form');
+    if(sf && !sf.children.length) buildSatisfactionForm();
+  } else {
+    satBox.classList.add('hidden');
+  }
+}
+// 대상자 만족도 폼 생성
+function buildSatisfactionForm(){
+  const items = SAT_ITEMS.map((t,i)=>surveyItemRow('sat',i,t,SAT_OPTIONS)).join('');
+  document.getElementById('satisfaction-form').innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:130px;">
+        <label class="label" style="font-size:14px;">성별</label>
+        <div class="choice-group">
+          <span class="choice"><input type="radio" name="sat-gender" id="sat-gender-m" value="남"><label for="sat-gender-m">남</label></span>
+          <span class="choice"><input type="radio" name="sat-gender" id="sat-gender-f" value="여"><label for="sat-gender-f">여</label></span>
+        </div>
+      </div>
+      <div style="flex:1;min-width:130px;">
+        <label class="label" style="font-size:14px;">연령</label>
+        <input type="number" id="sat-age" placeholder="예) 78" min="1" max="120" style="width:100%;">
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;">${items}</div>
+    <div style="background:#fff;border-radius:10px;padding:14px;margin-bottom:12px;">
+      <label class="label" style="font-size:14px;">공주시정신건강복지센터에 대해 알고 계셨나요?</label>
+      <div class="choice-group">
+        <span class="choice"><input type="radio" name="sat-center" id="sat-center-y" value="알고 있었다"><label for="sat-center-y">알고 있었다</label></span>
+        <span class="choice"><input type="radio" name="sat-center" id="sat-center-n" value="모른다"><label for="sat-center-n">모른다</label></span>
+      </div>
+    </div>
+    <div style="background:#fff;border-radius:10px;padding:14px;">
+      <label class="label" style="font-size:14px;">좋았던 점 · 아쉬운 점 · 기타 의견 (선택)</label>
+      <textarea id="sat-comment" placeholder="자유롭게 적어주세요." style="min-height:70px;"></textarea>
+    </div>`;
 }
 // 검사 문항 한 줄 생성
 function surveyItemRow(prefix, idx, text, options){
@@ -2722,6 +2882,10 @@ function resetSurveyForm(){
   const form = document.getElementById('survey-form');
   if(form) form.innerHTML = '';   // 다음 회기 선택 시 새로 생성
   document.getElementById('survey-box').classList.add('hidden');
+  const sf = document.getElementById('satisfaction-form');
+  if(sf) sf.innerHTML = '';
+  const sb = document.getElementById('satisfaction-box');
+  if(sb) sb.classList.add('hidden');
 }
 
 // ══════════════════════════════════════════════
