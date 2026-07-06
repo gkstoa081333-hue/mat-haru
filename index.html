@@ -382,7 +382,7 @@
         <button class="tab-btn" onclick="switchAdminTab('accounts',this)">👤 계정 관리</button>
         <button class="tab-btn" onclick="switchAdminTab('reports',this)">📋 전체 보고서</button>
         <button class="tab-btn" onclick="switchAdminTab('survey',this)">🩺 척도검사</button>
-        <button class="tab-btn" onclick="switchAdminTab('vsurvey',this)">🧡 자원봉사자 만족도</button>
+        <button class="tab-btn" onclick="switchAdminTab('vsurvey',this)">📊 만족도 통계</button>
         <button class="tab-btn" onclick="switchAdminTab('trash',this)">🗑 휴지통</button>
         <button class="tab-btn" onclick="switchAdminTab('backup',this)">☁️ 드라이브 백업</button>
         <button class="tab-btn" onclick="switchAdminTab('inquiry',this)" id="admin-inquiry-tab">💬 문의함</button>
@@ -462,11 +462,9 @@
 
       <div id="atab-vsurvey" class="hidden">
         <div class="section-header">
-          <h3>🧡 자원봉사자 만족도</h3>
-          <button class="btn btn-amber btn-sm" onclick="exportVolunteerSurveyExcel()">📊 엑셀 내보내기</button>
+          <h3>📊 만족도 통계</h3>
         </div>
-        <div id="vsurvey-link-box"></div>
-        <div id="vsurvey-list"></div>
+        <div id="sat-stats"></div>
       </div>
 
       <div id="atab-inquiry" class="hidden">
@@ -945,7 +943,7 @@ function switchAdminTab(tab, btn) {
   if (tab === 'dashboard') renderAdminDashboard();
   if (tab === 'inquiry') renderAdminInquiries();
   if (tab === 'survey') renderSurveyTab();
-  if (tab === 'vsurvey') renderVolunteerSurveys();
+  if (tab === 'vsurvey') renderSatisfactionStats();
   if (tab === 'trash') renderTrash();
   if (tab === 'backup') renderBackup();
 }
@@ -2044,39 +2042,119 @@ function volunteerSurveyUrl(){
   const base = location.href.split('#')[0].split('?')[0].replace(/[^/]*$/, '');
   return base + 'volunteer-survey.html';
 }
-async function renderVolunteerSurveys(){
+async function renderSatisfactionStats(){
+  const box = document.getElementById('sat-stats');
+  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;">불러오는 중...</div>';
+
+  // 대상자 만족도(5회기 보고서)
+  const reports = await getReports();
+  const tSats = reports.filter(r => r.satisfaction && Array.isArray(r.satisfaction.responses)).map(r => r.satisfaction);
+  // 자원봉사자 만족도
+  let vdata = {};
+  try{ vdata = await fbGet('volunteerSurveys') || {}; }catch(e){}
+  const vSats = Object.values(vdata).filter(v => v && Array.isArray(v.responses));
+
   const url = volunteerSurveyUrl();
-  document.getElementById('vsurvey-link-box').innerHTML = `
-    <div style="background:var(--cream);border:1px solid var(--sand);border-radius:12px;padding:16px;margin-bottom:18px;">
-      <div style="font-weight:800;margin-bottom:8px;">🔗 자원봉사자에게 이 링크를 공유하세요</div>
+
+  box.innerHTML = `
+    ${statSection('👵 대상자(참여자) 만족도', tSats, SAT_SHORT, 'target')}
+    <div style="height:24px;"></div>
+    <div style="background:var(--cream);border:1px solid var(--sand);border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="font-weight:800;margin-bottom:8px;">🔗 자원봉사자 만족도 링크 공유</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <input type="text" id="vsurvey-url" value="${escAttr(url)}" readonly style="flex:1;min-width:200px;padding:9px;border:1px solid var(--sand);border-radius:8px;font-size:13px;">
         <button class="btn btn-primary btn-sm" onclick="copyVsurveyUrl()">복사</button>
         <button class="btn btn-ghost btn-sm" onclick="window.open('${escAttr(url)}','_blank')">열기</button>
       </div>
-      <p style="font-size:13px;color:var(--gray);margin:8px 0 0;">로그인 없이 접속해 작성할 수 있습니다. 제출된 결과는 아래에 모입니다.</p>
+      <p style="font-size:13px;color:var(--gray);margin:8px 0 0;">로그인 없이 접속해 작성할 수 있습니다.</p>
+    </div>
+    ${statSection('🧡 자원봉사자 만족도', vSats, VOL_ITEMS, 'vol')}
+    ${vSats.length ? renderVolList(vSats) : ''}
+  `;
+}
+
+// 문항별 평균 막대 + 요약 + 엑셀 버튼
+function statSection(title, list, labels, kind){
+  const n = labels.length;
+  const excelBtn = kind==='target'
+    ? `<button class="btn btn-amber btn-sm" onclick="exportTargetSatExcel()">📊 엑셀</button>`
+    : `<button class="btn btn-amber btn-sm" onclick="exportVolunteerSurveyExcel()">📊 엑셀</button>`;
+  if(!list.length){
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-size:17px;font-weight:800;color:var(--primary);">${title}</div>${excelBtn}
+      </div>
+      <div style="text-align:center;color:var(--gray);padding:20px;">아직 제출된 응답이 없습니다.</div>
     </div>`;
-  const box = document.getElementById('vsurvey-list');
-  box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:16px;">불러오는 중...</div>';
-  let data = {};
-  try{ data = await fbGet('volunteerSurveys') || {}; }catch(e){}
-  const list = Object.values(data).filter(Boolean).sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
-  if(!list.length){ box.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px;">아직 제출된 만족도가 없습니다.</div>'; return; }
-  const avgAll = (list.reduce((s,v)=> s + ((v.responses||[]).reduce((a,x)=>a+(x||0),0)/((v.responses||[]).length||1)), 0)/list.length).toFixed(1);
-  box.innerHTML = `<div style="font-size:14px;color:var(--brown);margin-bottom:10px;">총 <b>${list.length}명</b> 제출 · 전체 평균 <b>${avgAll}</b>점</div>` +
-    list.map(v=>{
-      const r = v.responses||[];
-      const avg = r.length ? (r.reduce((s,x)=>s+(x||0),0)/r.length).toFixed(1) : '-';
-      const d = v.createdAt ? new Date(v.createdAt).toLocaleString('ko-KR') : '';
-      return `<div class="card" style="margin-bottom:10px;">
+  }
+  const avgs = avgByItem(list, n);
+  const overall = (avgs.reduce((s,x)=>s+x,0)/n).toFixed(1);
+  const bars = labels.map((lb,i)=> satBar(`${i+1}. ${lb}`, avgs[i])).join('');
+  // 대상자: 센터 인지 비율
+  let extra = '';
+  if(kind==='target'){
+    const known = list.filter(v=>v.center==='알고 있었다').length;
+    const pct = Math.round(known/list.length*100);
+    extra = `<div style="font-size:13px;color:var(--brown);margin-top:10px;">센터 인지: 알고 있었다 ${known}명(${pct}%) · 모른다 ${list.length-known}명</div>`;
+  }
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-size:17px;font-weight:800;color:var(--primary);">${title}</div>${excelBtn}
+    </div>
+    <div style="font-size:14px;color:var(--brown);margin-bottom:12px;">응답 <b>${list.length}명</b> · 전체 평균 <b style="color:var(--primary);">${overall}</b> / 5</div>
+    ${bars}
+  ${extra}</div>`;
+}
+function avgByItem(list, n){
+  const sums = new Array(n).fill(0), cnts = new Array(n).fill(0);
+  list.forEach(v => { const r = v.responses||[]; for(let i=0;i<n;i++){ if(typeof r[i]==='number'){ sums[i]+=r[i]; cnts[i]++; } } });
+  return sums.map((s,i)=> cnts[i] ? s/cnts[i] : 0);
+}
+function satBar(label, avg){
+  const pct = Math.max(0, Math.min(100, avg/5*100));
+  return `<div style="margin-bottom:9px;">
+    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;">
+      <span style="flex:1;padding-right:8px;">${escTxt(label)}</span>
+      <b style="color:var(--primary);">${avg.toFixed(1)}</b>
+    </div>
+    <div style="background:#F0E6DC;border-radius:6px;height:13px;overflow:hidden;">
+      <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--primary-light),var(--primary));"></div>
+    </div>
+  </div>`;
+}
+function renderVolList(list){
+  const sorted = [...list].sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  return `<details style="margin-top:6px;"><summary style="cursor:pointer;font-weight:700;color:var(--brown);padding:8px 0;">자원봉사자 개별 응답 ${sorted.length}건 보기</summary>` +
+    sorted.map(v=>{
+      const r=v.responses||[]; const avg=r.length?(r.reduce((s,x)=>s+(x||0),0)/r.length).toFixed(1):'-';
+      const d=v.createdAt?new Date(v.createdAt).toLocaleString('ko-KR'):'';
+      return `<div class="card" style="margin:8px 0;">
         <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
           <b>${escTxt(v.name||'(무기명)')}</b>
-          <span style="color:var(--gray);font-size:13px;">${escTxt(v.gender||'')} · ${escTxt(String(v.age||'-'))}세 · 평균 ${avg}점</span>
+          <span style="color:var(--gray);font-size:13px;">${escTxt(v.gender||'')} · ${escTxt(String(v.age||'-'))}세 · 평균 ${avg}</span>
         </div>
-        ${v.comment?`<div style="margin-top:6px;font-size:14px;color:var(--brown);">💬 ${escTxt(v.comment)}</div>`:''}
+        ${v.comment?`<div style="margin-top:6px;font-size:14px;">💬 ${escTxt(v.comment)}</div>`:''}
         <div style="margin-top:6px;font-size:12px;color:var(--gray);">${d}</div>
       </div>`;
-    }).join('');
+    }).join('') + `</details>`;
+}
+// 대상자 만족도 엑셀
+async function exportTargetSatExcel(){
+  const reports = await getReports();
+  const list = reports.filter(r => r.satisfaction && Array.isArray(r.satisfaction.responses));
+  if(!list.length){ alert('내보낼 대상자 만족도가 없습니다.'); return; }
+  const header = ['번호','대상자','성별','연령', ...SAT_SHORT.map((s,i)=>`${i+1}.${s}`), '평균','센터인지','의견','제출일시'];
+  const rows = [header];
+  list.forEach((r,i)=>{
+    const s = r.satisfaction; const q = s.responses||[];
+    const avg = q.length ? (q.reduce((a,x)=>a+(x||0),0)/q.length).toFixed(2) : '';
+    rows.push([i+1, r.target||'', s.gender||'', s.age||'', ...Array.from({length:8},(_,k)=>q[k]??''), avg, s.center||'', s.comment||'', r.createdAt?new Date(r.createdAt).toLocaleString('ko-KR'):'']);
+  });
+  const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[5,12,6,6,7,7,7,7,7,7,7,7,8,12,30,18].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws,'대상자만족도');
+  const d=new Date(),ds=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  XLSX.writeFile(wb,`대상자만족도_${ds}.xlsx`);
 }
 function copyVsurveyUrl(){
   const el = document.getElementById('vsurvey-url');
@@ -2684,6 +2762,20 @@ const SAT_ITEMS = [
   '비슷한 프로그램이 있다면 다시 참여하시겠습니까?'
 ];
 const SAT_OPTIONS = [{v:1,t:'매우 그렇지 않다'},{v:2,t:'그렇지 않다'},{v:3,t:'보통'},{v:4,t:'그렇다'},{v:5,t:'매우 그렇다'}];
+// 자원봉사자 만족도 8문항(집계 라벨용, 외부 페이지와 동일)
+const VOL_ITEMS = [
+  '프로그램 전반 만족',
+  '밀키트 메뉴 구성(노인 대상 적절)',
+  '프로그램 일정(회기수·방문시간) 적절',
+  '역할과 활동 내용 명확',
+  '조리 과정·활동 난이도 적절',
+  '신체적·정서적 부담 과도하지 않음',
+  '대상자 정서 안정·식생활 개선 도움',
+  '향후 유사 프로그램 참여 의향'
+];
+const SAT_SHORT = [
+  '전반 만족','밀키트 메뉴 적절','맛과 양 만족','요리법 이해 쉬움','식사 준비·식사 도움','혼자 식사 나아짐','기분·마음 도움','재참여 의향'
+];
 
 function phq9Level(total){
   if(total==null) return {label:'-', color:'var(--gray)'};
