@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>맛있는 하루 · 자원봉사자 만족도 조사</title>
+<style>
+  :root{ --primary:#E07A4F; --primary-light:#F0A882; --cream:#FFF3E9; --sand:#F0D9C8;
+    --brown:#6B4A38; --gray:#8A8A8A; --red:#C85050; --bg:#FBF6F0; }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--brown);font-family:-apple-system,BlinkMacSystemFont,'Malgun Gothic','맑은 고딕',sans-serif;line-height:1.6;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:640px;margin:0 auto;padding:20px 16px 60px;}
+  .head{background:linear-gradient(135deg,var(--primary-light),var(--primary));color:#fff;border-radius:16px;padding:24px 20px;margin-bottom:20px;}
+  .head h1{margin:0 0 6px;font-size:22px;font-weight:900;}
+  .head p{margin:0;font-size:14px;opacity:.95;}
+  .card{background:#fff;border:1px solid var(--sand);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .label{display:block;font-size:15px;font-weight:700;margin-bottom:8px;color:var(--brown);}
+  .req{color:var(--red);}
+  input[type=text],input[type=number],textarea{width:100%;padding:11px 13px;border:1px solid var(--sand);border-radius:9px;font-size:16px;font-family:inherit;background:#fff;color:var(--brown);}
+  textarea{min-height:80px;resize:vertical;}
+  .qitem{padding:14px 0;border-bottom:1px solid #F0E6DC;}
+  .qitem:last-child{border-bottom:none;}
+  .qtext{font-size:15px;font-weight:600;margin-bottom:9px;}
+  .choices{display:flex;gap:6px;flex-wrap:wrap;}
+  .choice{flex:1;min-width:64px;}
+  .choice input{position:absolute;opacity:0;width:0;height:0;}
+  .choice label{display:block;text-align:center;padding:9px 4px;border:1px solid var(--sand);border-radius:8px;font-size:13px;cursor:pointer;background:#fff;transition:.15s;color:var(--gray);}
+  .choice input:checked + label{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:700;}
+  .qitem.missing{border:2px solid var(--red);border-radius:10px;background:#FDF2F2;padding:12px;}
+  .row{display:flex;gap:12px;flex-wrap:wrap;}
+  .row > div{flex:1;min-width:130px;}
+  .btn{display:block;width:100%;padding:15px;border:none;border-radius:12px;background:var(--primary);color:#fff;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .btn:disabled{opacity:.6;}
+  .err{color:var(--red);font-size:14px;margin:10px 0;display:none;}
+  .done{text-align:center;padding:50px 20px;}
+  .done .emoji{font-size:56px;margin-bottom:14px;}
+  .done h2{color:var(--primary);margin:0 0 10px;}
+  .sec-title{font-size:17px;font-weight:800;color:var(--primary);margin-bottom:4px;}
+  .hidden{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="form-view">
+    <div class="head">
+      <h1>🧡 자원봉사자 만족도 조사</h1>
+      <p>2026년 '맛;하루(맛있는 하루)' 프로그램 · 공주시정신건강복지센터</p>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">기본 정보</div>
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label class="label">이름 <span class="req">*</span></label>
+          <input type="text" id="v-name" placeholder="자원봉사자 성함" autocomplete="off">
+        </div>
+        <div>
+          <label class="label">연령 <span class="req">*</span></label>
+          <input type="number" id="v-age" placeholder="예) 45" min="1" max="120">
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <label class="label">성별 <span class="req">*</span></label>
+        <div class="choices" style="max-width:220px;">
+          <span class="choice"><input type="radio" name="v-gender" id="v-g-m" value="남"><label for="v-g-m">남</label></span>
+          <span class="choice"><input type="radio" name="v-gender" id="v-g-f" value="여"><label for="v-g-f">여</label></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-title">프로그램 만족도 <span class="req">*</span></div>
+      <p style="font-size:13px;color:var(--gray);margin:4px 0 6px;">각 문항에 해당하는 정도를 선택해주세요.</p>
+      <div id="q-list"></div>
+    </div>
+
+    <div class="card">
+      <label class="label">좋았던 점 · 아쉬운 점 · 기타 의견 (선택)</label>
+      <textarea id="v-comment" placeholder="자유롭게 적어주세요."></textarea>
+    </div>
+
+    <div id="err" class="err"></div>
+    <button class="btn" id="submit-btn" onclick="submitSurvey()">제출하기</button>
+  </div>
+
+  <div id="done-view" class="done hidden">
+    <div class="emoji">🎉</div>
+    <h2>제출이 완료되었습니다</h2>
+    <p style="color:var(--gray);">소중한 의견 감사합니다.<br>참여해주셔서 진심으로 감사드립니다.</p>
+  </div>
+</div>
+
+<script>
+  const DB_URL = 'https://mat-haru-default-rtdb.firebaseio.com';
+  const Q_ITEMS = [
+    '프로그램에 전반적으로 만족하십니까?',
+    '밀키트 메뉴 구성은 노인 대상 프로그램으로 적절하다고 생각하십니까?',
+    '프로그램 일정(회기 수, 방문시간 등)은 적절했습니까?',
+    '프로그램 진행 시 역할과 활동 내용은 명확했습니까?',
+    '조리 과정 및 활동 난이도는 수행하기에 적절했습니까?',
+    '활동 중 신체적·정서적 부담은 과도하지 않았다고 생각하십니까?',
+    '본 프로그램이 대상자의 정서적 안정 및 식생활 개선에 도움이 되었다고 생각하십니까?',
+    '향후 유사한 프로그램이 진행될 경우, 참여 의향이 있으십니까?'
+  ];
+  const OPTIONS = [
+    {v:1,t:'매우<br>그렇지 않다'},{v:2,t:'그렇지<br>않다'},{v:3,t:'보통'},{v:4,t:'그렇다'},{v:5,t:'매우<br>그렇다'}
+  ];
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // 문항 렌더
+  document.getElementById('q-list').innerHTML = Q_ITEMS.map((t,i)=>{
+    const chips = OPTIONS.map((o,j)=>`<span class="choice"><input type="radio" name="q${i}" id="q${i}-${j}" value="${o.v}" onchange="clearMissing(${i})"><label for="q${i}-${j}">${o.t}</label></span>`).join('');
+    return `<div class="qitem" id="qitem-${i}"><div class="qtext">${i+1}. ${esc(t)}</div><div class="choices">${chips}</div></div>`;
+  }).join('');
+
+  function clearMissing(i){ document.getElementById('qitem-'+i).classList.remove('missing'); }
+
+  async function submitSurvey(){
+    const err = document.getElementById('err');
+    const name = document.getElementById('v-name').value.trim();
+    const age = document.getElementById('v-age').value.trim();
+    const gender = (document.querySelector('input[name="v-gender"]:checked')||{}).value || '';
+    const comment = document.getElementById('v-comment').value.trim();
+    const responses = [];
+    for(let i=0;i<Q_ITEMS.length;i++){
+      const el = document.querySelector(`input[name="q${i}"]:checked`);
+      responses.push(el ? parseInt(el.value,10) : null);
+    }
+    // 검증
+    const miss = [];
+    responses.forEach((r,i)=>{ if(r==null) miss.push(i); });
+    document.querySelectorAll('.qitem').forEach(e=>e.classList.remove('missing'));
+    if(!name || !age || !gender || miss.length){
+      miss.forEach(i=>document.getElementById('qitem-'+i).classList.add('missing'));
+      const lack = [];
+      if(!name) lack.push('이름');
+      if(!age) lack.push('연령');
+      if(!gender) lack.push('성별');
+      if(miss.length) lack.push(`만족도 문항 ${miss.length}개`);
+      err.textContent = '다음 항목을 작성해주세요: ' + lack.join(', ');
+      err.style.display = 'block';
+      if(miss.length) document.getElementById('qitem-'+miss[0]).scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+    err.style.display = 'none';
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true; btn.textContent = '제출 중...';
+    const id = Date.now().toString();
+    const data = { id, name, age:(Number(age)||age), gender, responses, comment, createdAt:new Date().toISOString() };
+    try{
+      const res = await fetch(`${DB_URL}/volunteerSurveys/${id}.json`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+      });
+      if(!res.ok) throw new Error('저장 실패('+res.status+')');
+      document.getElementById('form-view').classList.add('hidden');
+      document.getElementById('done-view').classList.remove('hidden');
+      window.scrollTo(0,0);
+    }catch(e){
+      btn.disabled = false; btn.textContent = '제출하기';
+      err.textContent = '제출 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. ('+e.message+')';
+      err.style.display = 'block';
+    }
+  }
+</script>
+</body>
+</html>
