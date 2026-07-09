@@ -854,6 +854,7 @@ async function startApp() {
           document.getElementById('admin-section').classList.add('hidden');
           loadTargetSelect();
           setDefaultDateTime();
+          setTimeout(checkDraft, 500);
         }
         return;
       }
@@ -904,6 +905,7 @@ async function doLogin() {
       document.getElementById('admin-section').classList.add('hidden');
       loadTargetSelect();
       setDefaultDateTime();
+      setTimeout(checkDraft, 500);
     }
   } catch(e) {
     errEl.textContent = '서버 연결 오류입니다. 잠시 후 다시 시도해주세요.';
@@ -1085,6 +1087,85 @@ async function loadTargetSelect() {
   sel.innerHTML = uniq.map((n,i) => `<option value="${escAttr(n)}"${i===0?' selected':''}>${escTxt(n)}</option>`).join('');
 }
 
+// ══════════════════════════════════════════════
+//  작성 중 자동 임시저장 (기록 유실 방지)
+// ══════════════════════════════════════════════
+function draftKey(){ return 'matharu_draft_' + (currentUser ? currentUser.id : ''); }
+function gv(id){ const e=document.getElementById(id); return e ? e.value : ''; }
+function sv(id,v){ const e=document.getElementById(id); if(e) e.value = v||''; }
+function collectDraft(){
+  return {
+    date: gv('f-date'), time: gv('f-time'), target: gv('f-target'), session: gv('f-session'),
+    activity: gv('f-activity'), reaction: gv('f-reaction'), note: gv('f-note'),
+    status: (document.querySelector('input[name="f-status"]:checked')||{}).value || '',
+    concerns: [...document.querySelectorAll('.f-concern:checked')].map(c=>c.value),
+    concernEtc: gv('f-concern-etc'),
+    phq9: readSurveyResponses('phq9',9), ucla: readSurveyResponses('ucla',20), sat: readSurveyResponses('sat',8),
+    satGender: (document.querySelector('input[name="sat-gender"]:checked')||{}).value || '',
+    satAge: gv('sat-age'),
+    satCenter: (document.querySelector('input[name="sat-center"]:checked')||{}).value || '',
+    satComment: gv('sat-comment'),
+    ts: Date.now()
+  };
+}
+function hasDraftContent(d){
+  if(!d) return false;
+  return !!(d.activity || d.reaction || d.session || d.status || (d.concerns&&d.concerns.length) ||
+    (d.phq9&&d.phq9.some(x=>x!=null)) || (d.ucla&&d.ucla.some(x=>x!=null)) || (d.sat&&d.sat.some(x=>x!=null)) ||
+    (d.note && d.note!=='' && d.note!=='없음'));
+}
+function saveDraft(){
+  if(!currentUser || currentUser.role==='admin') return;
+  const d = collectDraft();
+  if(!hasDraftContent(d)) return;
+  try{ localStorage.setItem(draftKey(), JSON.stringify(d)); }catch(e){}
+}
+function clearDraft(){ try{ localStorage.removeItem(draftKey()); }catch(e){} }
+function restoreSurveyResp(prefix, arr){
+  if(!arr) return;
+  arr.forEach((v,i)=>{ if(v!=null){ const r=document.querySelector(`input[name="${prefix}-q${i}"][value="${v}"]`); if(r) r.checked=true; } });
+}
+function restoreDraft(d){
+  sv('f-date',d.date); sv('f-time',d.time);
+  if(d.target){ const t=document.querySelector(`#f-target option[value="${cssAttr(d.target)}"]`); if(t) document.getElementById('f-target').value=d.target; }
+  if(d.session){ sv('f-session',d.session); onSessionChange(); }
+  sv('f-activity',d.activity); sv('f-reaction',d.reaction); sv('f-note',d.note);
+  if(d.status){ const r=document.querySelector(`input[name="f-status"][value="${cssAttr(d.status)}"]`); if(r) r.checked=true; }
+  (d.concerns||[]).forEach(v=>{ const c=[...document.querySelectorAll('.f-concern')].find(x=>x.value===v); if(c) c.checked=true; });
+  sv('f-concern-etc', d.concernEtc);
+  // 검사·만족도는 폼이 렌더된 뒤 복원
+  setTimeout(()=>{
+    restoreSurveyResp('phq9', d.phq9); restoreSurveyResp('ucla', d.ucla); restoreSurveyResp('sat', d.sat);
+    if(d.satGender){ const g=document.querySelector(`input[name="sat-gender"][value="${cssAttr(d.satGender)}"]`); if(g) g.checked=true; }
+    sv('sat-age', d.satAge);
+    if(d.satCenter){ const c=document.querySelector(`input[name="sat-center"][value="${cssAttr(d.satCenter)}"]`); if(c) c.checked=true; }
+    sv('sat-comment', d.satComment);
+    if(typeof updateLiveScore==='function') updateLiveScore();
+  }, 200);
+}
+function cssAttr(s){ return String(s).replace(/"/g,'\\"'); }
+function checkDraft(){
+  if(!currentUser || currentUser.role==='admin') return;
+  let raw; try{ raw=localStorage.getItem(draftKey()); }catch(e){ return; }
+  if(!raw) return;
+  let d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  if(!hasDraftContent(d)) return;
+  const when = d.ts ? new Date(d.ts).toLocaleString('ko-KR') : '';
+  if(confirm(`작성하다 중단된 보고서가 있습니다.\n(${when})\n\n이어서 작성할까요?\n\n[확인] 이어서 작성   [취소] 새로 시작`)){
+    restoreDraft(d);
+  } else {
+    clearDraft();
+  }
+}
+// 자동 저장(3초마다) + 페이지 이탈 경고
+setInterval(()=>{ try{ saveDraft(); }catch(e){} }, 3000);
+window.addEventListener('beforeunload', function(e){
+  if(currentUser && currentUser.role!=='admin'){
+    const d = collectDraft();
+    if(hasDraftContent(d)){ saveDraft(); e.preventDefault(); e.returnValue=''; return ''; }
+  }
+});
+
 // 견고한 이미지 압축 (안드로이드 고화소/포맷 문제 대응)
 async function compressImageFile(file, max, quality){
   if(!file || !(file.type||'').startsWith('image/')){
@@ -1254,6 +1335,7 @@ async function submitReport() {
     if (btn) { btn.disabled = true; btn.textContent = '제출 중...'; }
     await savePhotoBundle(id, { activity: [...photos], phq9: svPhq, ucla: svUcla });
     await saveReport(report);
+    clearDraft();
     photos = []; renderPhotoGrid();
     loadTargetSelect();
     document.getElementById('f-session').value = '';
@@ -1293,7 +1375,7 @@ function reportItemHTML(r) {
     <div class="report-item-header">
       <div>
         <div class="report-item-title">📌 ${r.target} · ${r.session}</div>
-        <div class="report-item-meta">📅 ${r.date} ${r.time} &nbsp;|&nbsp; 담당: ${r.userName}</div>
+        <div class="report-item-meta">📅 ${r.date} ${r.time} &nbsp;|&nbsp; 담당: ${escTxt(r.volunteer || '미등록')}</div>
       </div>
       <div style="font-size:14px;color:var(--gray);">사진 ${reportPhotoCount(r)}장</div>
     </div>
@@ -1332,7 +1414,7 @@ async function showReport(id) {
       <div class="modal-section"><div class="modal-section-label">방문 날짜</div><div class="modal-section-value">${report.date}</div></div>
       <div class="modal-section"><div class="modal-section-label">방문 시간</div><div class="modal-section-value">${report.time}</div></div>
       <div class="modal-section"><div class="modal-section-label">대상자</div><div class="modal-section-value">${report.target}</div></div>
-      <div class="modal-section"><div class="modal-section-label">담당자</div><div class="modal-section-value">${report.userName}</div></div>
+      <div class="modal-section"><div class="modal-section-label">담당 자원봉사자</div><div class="modal-section-value">${escTxt(report.volunteer || '미등록')}</div></div>
     </div>
     <div class="modal-section"><div class="modal-section-label">회기 활동 내용</div><div class="modal-section-value">${report.activity}</div></div>
     <div class="modal-section"><div class="modal-section-label">대상자 반응 및 소감</div><div class="modal-section-value">${report.reaction}</div></div>
