@@ -463,6 +463,7 @@
       <div id="atab-vsurvey" class="hidden">
         <div class="section-header">
           <h3>📊 만족도 통계</h3>
+          <button class="btn btn-primary btn-sm" onclick="generateAiSatisfactionReport()">🤖 AI 결과보고 초안</button>
         </div>
         <div id="sat-stats"></div>
       </div>
@@ -484,6 +485,19 @@
       <button class="modal-close" onclick="document.getElementById('report-modal').classList.add('hidden')">✕</button>
     </div>
     <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- AI 만족도 결과보고 초안 모달 -->
+<div id="ai-report-modal" class="modal-overlay hidden" onclick="if(event.target.id==='ai-report-modal')this.classList.add('hidden')">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title">
+      <span>🤖 AI 만족도 결과보고 초안</span>
+      <button class="modal-close" onclick="document.getElementById('ai-report-modal').classList.add('hidden')">✕</button>
+    </div>
+    <div id="ai-report-body">
+      <div style="text-align:center;color:var(--gray);padding:30px;">생성 중...</div>
+    </div>
   </div>
 </div>
 
@@ -2153,6 +2167,73 @@ async function renderSatisfactionStats(){
     ${statSection('🧡 자원봉사자 만족도', vSats, VOL_ITEMS, 'vol')}
     ${vSats.length ? renderVolList(vSats) : ''}
   `;
+}
+
+// ── AI 만족도 결과보고 초안 ──
+async function generateAiSatisfactionReport(){
+  const modal = document.getElementById('ai-report-modal');
+  const body = document.getElementById('ai-report-body');
+  modal.classList.remove('hidden');
+  body.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px;">AI가 초안을 작성 중입니다...</div>';
+
+  try{
+    const reports = await getReports();
+    const tSats = reports.filter(r => r.satisfaction && Array.isArray(r.satisfaction.responses)).map(r => r.satisfaction);
+    let vdata = {};
+    try{ vdata = await fbGet('volunteerSurveys') || {}; }catch(e){}
+    const vSats = Object.values(vdata).filter(v => v && Array.isArray(v.responses));
+
+    if(!tSats.length && !vSats.length){
+      body.innerHTML = '<div style="text-align:center;color:var(--gray);padding:30px;">아직 집계할 만족도 응답이 없습니다.</div>';
+      return;
+    }
+
+    const stats = {
+      target: {
+        count: tSats.length,
+        itemLabels: SAT_SHORT,
+        itemAverages: avgByItem(tSats, SAT_SHORT.length).map(n=>Number(n.toFixed(2))),
+        knownCenterPct: tSats.length ? Math.round(tSats.filter(v=>v.center==='알고 있었다').length/tSats.length*100) : null,
+        comments: tSats.map(v=>v.comment).filter(Boolean).slice(0, 15)
+      },
+      volunteer: {
+        count: vSats.length,
+        itemLabels: VOL_ITEMS,
+        itemAverages: avgByItem(vSats, VOL_ITEMS.length).map(n=>Number(n.toFixed(2))),
+        comments: vSats.map(v=>v.comment).filter(Boolean).slice(0, 15)
+      },
+      programName: '맛있는 하루'
+    };
+
+    const res = await fetch('/.netlify/functions/ai-report', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ type: 'satisfaction', stats })
+    });
+    const data = await res.json();
+    if(!res.ok || data.error){
+      body.innerHTML = `<div style="color:var(--red);padding:20px;">생성 실패: ${escTxt(data.error||res.status)}</div>`;
+      return;
+    }
+
+    const draftId = 'ai-draft-text';
+    body.innerHTML = `
+      <textarea id="${draftId}" style="width:100%;min-height:320px;padding:14px;border:1px solid var(--sand);border-radius:10px;font-size:14px;line-height:1.6;font-family:inherit;">${escTxt(data.result)}</textarea>
+      <p style="font-size:12px;color:var(--gray);margin:8px 0 0;">AI 초안입니다. 내용을 반드시 검토·수정한 뒤 사용하세요.</p>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button class="btn btn-ghost btn-sm" onclick="generateAiSatisfactionReport()">🔄 다시 생성</button>
+        <button class="btn btn-primary btn-sm" onclick="copyAiDraft('${draftId}')">📋 복사</button>
+      </div>`;
+  }catch(e){
+    body.innerHTML = `<div style="color:var(--red);padding:20px;">오류: ${escTxt(e.message||String(e))}</div>`;
+  }
+}
+function copyAiDraft(id){
+  const el = document.getElementById(id);
+  el.select(); el.setSelectionRange(0,9999);
+  const done = ()=>alert('초안이 복사되었습니다.');
+  if(navigator.clipboard){ navigator.clipboard.writeText(el.value).then(done).catch(()=>{ document.execCommand('copy'); done(); }); }
+  else { document.execCommand('copy'); done(); }
 }
 
 // 문항별 평균 막대 + 요약 + 엑셀 버튼
