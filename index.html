@@ -2986,23 +2986,6 @@ function buildSurveyForm(){
       <p style="font-size:13px;color:var(--gray);margin-bottom:8px;">"얼마나 자주 그렇게 느끼시나요?"</p>
       ${ucla}
       <div id="ucla-live" style="text-align:right;font-weight:800;margin-top:10px;">UCLA 총점: -</div>
-    </div>
-    <div style="background:#fff;border-radius:10px;padding:14px;">
-      <div style="font-weight:800;color:#2C6CA8;margin-bottom:8px;">③ 검사지 원본 사진 (보관용 · 선택)</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:140px;">
-          <label class="label" style="font-size:14px;">PHQ-9 원본</label>
-          <div class="photo-upload-area" onclick="document.getElementById('phq9-input').click()" style="padding:10px;"><div style="font-size:22px;">📷</div><p style="font-size:13px;">사진 추가</p></div>
-          <input type="file" id="phq9-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'phq9')">
-          <div id="phq9-grid" class="photo-grid"></div>
-        </div>
-        <div style="flex:1;min-width:140px;">
-          <label class="label" style="font-size:14px;">UCLA 원본</label>
-          <div class="photo-upload-area" onclick="document.getElementById('ucla-input').click()" style="padding:10px;"><div style="font-size:22px;">📷</div><p style="font-size:13px;">사진 추가</p></div>
-          <input type="file" id="ucla-input" accept="image/*" multiple style="display:none" onchange="addSurveyPhotos(this,'ucla')">
-          <div id="ucla-grid" class="photo-grid"></div>
-        </div>
-      </div>
     </div>`;
   updateLiveScore();
 }
