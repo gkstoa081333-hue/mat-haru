@@ -741,22 +741,31 @@ async function saveReport(report) {
 }
 // ── 사진 분리 저장 (목록 로딩 속도 개선) ──
 // reportPhotos/{id} = { activity:[...], phq9:[...], ucla:[...] }
-async function savePhotoBundle(id, bundle){ return fbSet('reportPhotos/' + id, bundle); }
-async function loadPhotoBundle(id, fallbackReport){
+async function savePhotoBundle(id, bundle){ invalidatePhotoBundleCache(id); return fbSet('reportPhotos/' + id, bundle); }
+// 같은 세션 내 재조회 시 재다운로드 방지용 메모리 캐시 (다운로드 트래픽 절감)
+const _photoBundleCache = new Map();
+async function loadPhotoBundle(id, fallbackReport, forceRefresh=false){
+  if(!forceRefresh && _photoBundleCache.has(id)) return _photoBundleCache.get(id);
   let b = null;
   try{ b = await fbGet('reportPhotos/' + id); }catch(e){}
+  let result;
   if(b && (b.activity || b.phq9 || b.ucla)) {
-    return { activity: b.activity||[], phq9: b.phq9||[], ucla: b.ucla||[] };
+    result = { activity: b.activity||[], phq9: b.phq9||[], ucla: b.ucla||[] };
+  } else {
+    // 폴백: 분리 전(기존) 보고서는 본문에 사진이 들어있음
+    const r = fallbackReport || {};
+    result = {
+      activity: r.photos || [],
+      phq9: (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [],
+      ucla: (r.survey && r.survey.ucla && r.survey.ucla.photos) || []
+    };
   }
-  // 폴백: 분리 전(기존) 보고서는 본문에 사진이 들어있음
-  const r = fallbackReport || {};
-  return {
-    activity: r.photos || [],
-    phq9: (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [],
-    ucla: (r.survey && r.survey.ucla && r.survey.ucla.photos) || []
-  };
+  _photoBundleCache.set(id, result);
+  return result;
 }
-async function deletePhotoBundle(id){ try{ await fbDelete('reportPhotos/' + id); }catch(e){} }
+// 사진을 새로 저장/수정/삭제한 경우 캐시를 무효화해 최신 상태를 다시 받아오게 함
+function invalidatePhotoBundleCache(id){ _photoBundleCache.delete(id); }
+async function deletePhotoBundle(id){ invalidatePhotoBundleCache(id); try{ await fbDelete('reportPhotos/' + id); }catch(e){} }
 function reportPhotoCount(r){
   if(typeof r.photoCount === 'number') return r.photoCount;
   return (r.photos || []).length;  // 기존 보고서 폴백
@@ -1890,20 +1899,24 @@ function renderBackup(){
         <div style="font-size:15px;color:var(--green);font-weight:700;">✅ 설정 완료 — 백업할 수 있습니다</div>
         <button class="btn btn-ghost btn-sm" onclick="resetClientId()">클라이언트 ID 변경</button>
       </div>
-      <p style="font-size:14px;color:var(--gray);margin-top:10px;">‘맛있는하루 사진백업’ 폴더 아래에 날짜별 폴더를 만들어, 모든 보고서의 사진(활동·검사지)을 올립니다.</p>
-      <button class="btn btn-primary" style="margin-top:14px;padding:13px 26px;" id="backup-btn" onclick="backupToDrive()">☁️ 구글 드라이브로 사진 백업 시작</button>
+      <p style="font-size:14px;color:var(--gray);margin-top:10px;">‘맛있는하루 사진백업’ 폴더 아래에 날짜별 폴더를 만들어, <b>아직 백업 안 된 사진만</b> 골라 올립니다. (이미 백업된 사진은 재다운로드하지 않아 데이터 사용량이 절약됩니다)</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">
+        <button class="btn btn-primary" style="padding:13px 26px;" id="backup-btn" onclick="backupToDrive(false)">☁️ 새 사진만 백업</button>
+        <button class="btn btn-ghost" style="padding:13px 26px;" onclick="backupToDrive(true)">🔄 전체 재백업</button>
+      </div>
     </div>
     <div id="backup-log" style="font-size:13px;color:var(--brown);background:#fff;border:1px solid var(--sand);border-radius:10px;padding:14px;max-height:300px;overflow:auto;line-height:1.7;display:none;"></div>`;
 }
 function resetClientId(){ try{ localStorage.removeItem('gdrive_client_id'); }catch(e){} renderBackup(); }
 
 let _driveToken = null;
-function backupToDrive(){
+function backupToDrive(forceAll=false){
   const cid = getClientId();
   if(!cid){ renderBackup(); return; }
   if(typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2){
     alert('구글 로그인 모듈을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'); return;
   }
+  if(forceAll && !confirm('전체 재백업은 모든 사진을 처음부터 다시 다운로드합니다.\nFirebase 다운로드 용량을 많이 사용하니 꼭 필요할 때만 사용하세요.\n계속할까요?')) return;
   const logEl = document.getElementById('backup-log');
   if(logEl){ logEl.style.display='block'; logEl.innerHTML=''; }
   blog('구글 계정 인증을 요청합니다...');
@@ -1913,7 +1926,7 @@ function backupToDrive(){
     callback: async (resp) => {
       if(resp.error){ blog('❌ 인증 실패: ' + resp.error); return; }
       _driveToken = resp.access_token;
-      try{ await runBackup(_driveToken); }
+      try{ await runBackup(_driveToken, forceAll); }
       catch(e){ blog('❌ 오류: ' + e.message); console.error(e); }
     }
   });
@@ -1956,16 +1969,31 @@ async function driveUpload(token, name, parentId, dataUrl){
   return res.json();
 }
 
-async function runBackup(token){
+async function runBackup(token, forceAll=false){
   const btn = document.getElementById('backup-btn');
   if(btn){ btn.disabled=true; btn.textContent='백업 중...'; }
   blog('✅ 인증 완료. 백업을 시작합니다.');
   const reports = await getReports();      // 휴지통 제외
   // 사진이 있는 보고서만
-  const withPhotos = reports.filter(r => reportPhotoCount(r) > 0 || (r.surveyPhotoCount && (r.surveyPhotoCount.phq9 || r.surveyPhotoCount.ucla)) || (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length))));
-  if(!withPhotos.length){ blog('백업할 사진이 없습니다.'); if(btn){btn.disabled=false;btn.textContent='☁️ 구글 드라이브로 사진 백업 시작';} return; }
+  const withPhotosAll = reports.filter(r => reportPhotoCount(r) > 0 || (r.surveyPhotoCount && (r.surveyPhotoCount.phq9 || r.surveyPhotoCount.ucla)) || (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length))));
+  if(!withPhotosAll.length){ blog('백업할 사진이 없습니다.'); if(btn){btn.disabled=false;btn.textContent='☁️ 새 사진만 백업';} return; }
 
-  blog(`총 ${withPhotos.length}건의 보고서를 백업합니다.`);
+  // ── 증분 백업: 이전에 백업 완료된 보고서는 건너뛰어 다운로드 트래픽을 절감 ──
+  // (매번 전체를 재다운로드하던 것이 Firebase 다운로드 용량 초과의 주 원인이었음)
+  let backupLog = {};
+  if(!forceAll){
+    try{ backupLog = (await fbGet('meta/backupLog')) || {}; }catch(e){}
+  }
+  const withPhotos = forceAll ? withPhotosAll : withPhotosAll.filter(r => !backupLog[r.id]);
+
+  if(!withPhotos.length){
+    blog(`✅ 이미 모두 백업되어 있습니다. (전체 ${withPhotosAll.length}건 중 새로 백업할 항목 없음)`);
+    blog('※ 전체를 다시 백업하고 싶으면 "전체 재백업" 버튼을 사용하세요.');
+    if(btn){ btn.disabled=false; btn.textContent='☁️ 다시 백업하기'; }
+    return;
+  }
+  const skipped = withPhotosAll.length - withPhotos.length;
+  blog(`총 ${withPhotosAll.length}건 중 ${withPhotos.length}건이 백업 대상입니다.` + (skipped ? ` (이미 백업된 ${skipped}건은 건너뜀 → 트래픽 절약)` : ''));
   const rootId = await driveFindOrCreateFolder(token, '맛있는하루 사진백업', null);
   const now = new Date();
   const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
@@ -1983,11 +2011,16 @@ async function runBackup(token){
     (bundle.activity||[]).forEach((p,i)=> list.push([`${base}_활동${i+1}.jpg`, p]));
     (bundle.phq9||[]).forEach((p,i)=> list.push([`${base}_PHQ9_${i+1}.jpg`, p]));
     (bundle.ucla||[]).forEach((p,i)=> list.push([`${base}_UCLA_${i+1}.jpg`, p]));
+    let reportOk = list.length > 0;
     for(const [fname, durl] of list){
       total++;
       try{ await driveUpload(token, fname, runId, durl); okCount++; blog(`  ⬆️ ${fname}`); }
-      catch(e){ blog(`  ⚠️ 실패: ${fname} (${e.message})`); }
+      catch(e){ blog(`  ⚠️ 실패: ${fname} (${e.message})`); reportOk = false; }
       await new Promise(res=>setTimeout(res,120)); // 과도한 요청 방지
+    }
+    // 이 보고서 사진이 전부 성공적으로 올라간 경우에만 "백업 완료"로 기록 (실패분은 다음 백업 때 재시도됨)
+    if(reportOk){
+      try{ await fbSet('meta/backupLog/' + r.id, true); }catch(e){}
     }
   }
   blog(`\n🎉 백업 완료: ${okCount}/${total}장 업로드되었습니다.`);
