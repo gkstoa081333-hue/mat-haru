@@ -800,9 +800,66 @@ function splitVolunteers(s){
 async function saveReport(report) {
   return fbSet('reports/' + report.id, report);
 }
+// ══════════════════════════════════════════════
+//  Firebase Storage 업로드 (사진을 DB가 아닌 Storage에 저장)
+//  ※ 기존에는 base64 문자열을 RTDB에 통째로 넣어서 다운로드 트래픽이 폭증했음.
+//    이제 사진은 Storage에 파일로 올리고 DB에는 URL만 저장한다.
+// ══════════════════════════════════════════════
+const STORAGE_BUCKET = 'mat-haru.firebasestorage.app';
+
+// base64 dataURL → Blob 변환
+function dataUrlToBlob(dataUrl){
+  const m = /^data:(image\/\w+);base64,(.+)$/.exec(dataUrl);
+  if(!m) return null;
+  const mime = m[1];
+  const bin = atob(m[2]);
+  const arr = new Uint8Array(bin.length);
+  for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+// 사진 1장을 Storage에 업로드하고 다운로드 URL을 돌려줌
+async function uploadPhotoToStorage(dataUrl, reportId, kind, idx){
+  const blob = dataUrlToBlob(dataUrl);
+  if(!blob) throw new Error('이미지 형식 오류');
+  const path = `reportPhotos/${reportId}/${kind}_${idx}_${Date.now()}.jpg`;
+  const tok = await getToken();
+  const endpoint = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o?uploadType=media&name=${encodeURIComponent(path)}`;
+  const headers = { 'Content-Type': blob.type };
+  if(tok) headers['Authorization'] = 'Firebase ' + tok;
+  const res = await fetch(endpoint, { method: 'POST', headers, body: blob });
+  if(!res.ok) throw new Error('사진 업로드 실패 (' + res.status + ')');
+  const j = await res.json();
+  const dlToken = String(j.downloadTokens || '').split(',')[0];
+  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${dlToken}`;
+}
+
+// 사진 배열을 통째로 처리: base64는 업로드해서 URL로, 이미 URL이면 그대로 둠
+async function uploadPhotoArray(arr, reportId, kind){
+  const out = [];
+  const list = arr || [];
+  for(let i = 0; i < list.length; i++){
+    const v = list[i];
+    if(typeof v !== 'string' || !v) continue;
+    if(v.startsWith('http')){ out.push(v); continue; }              // 이미 Storage URL
+    if(v.startsWith('data:image')){
+      out.push(await uploadPhotoToStorage(v, reportId, kind, i));    // base64 → 업로드
+    }
+  }
+  return out;
+}
+
 // ── 사진 분리 저장 (목록 로딩 속도 개선) ──
-// reportPhotos/{id} = { activity:[...], phq9:[...], ucla:[...] }
-async function savePhotoBundle(id, bundle){ invalidatePhotoBundleCache(id); return fbSet('reportPhotos/' + id, bundle); }
+// reportPhotos/{id} = { activity:[URL...], phq9:[URL...], ucla:[URL...] }
+async function savePhotoBundle(id, bundle){
+  invalidatePhotoBundleCache(id);
+  const converted = {
+    activity: await uploadPhotoArray(bundle.activity, id, 'activity'),
+    phq9:     await uploadPhotoArray(bundle.phq9,     id, 'phq9'),
+    ucla:     await uploadPhotoArray(bundle.ucla,     id, 'ucla')
+  };
+  return fbSet('reportPhotos/' + id, converted);
+}
 // 같은 세션 내 재조회 시 재다운로드 방지용 메모리 캐시 (다운로드 트래픽 절감)
 const _photoBundleCache = new Map();
 async function loadPhotoBundle(id, fallbackReport, forceRefresh=false){
@@ -826,7 +883,32 @@ async function loadPhotoBundle(id, fallbackReport, forceRefresh=false){
 }
 // 사진을 새로 저장/수정/삭제한 경우 캐시를 무효화해 최신 상태를 다시 받아오게 함
 function invalidatePhotoBundleCache(id){ _photoBundleCache.delete(id); }
-async function deletePhotoBundle(id){ invalidatePhotoBundleCache(id); try{ await fbDelete('reportPhotos/' + id); }catch(e){} }
+// Storage에 올라간 사진 파일 1개 삭제 (실패해도 전체 흐름은 계속)
+async function deleteStoragePhoto(url){
+  try{
+    if(typeof url !== 'string' || !url.startsWith('http')) return;   // base64면 지울 파일 없음
+    const m = /\/o\/([^?]+)/.exec(url);
+    if(!m) return;
+    const tok = await getToken();
+    const headers = {};
+    if(tok) headers['Authorization'] = 'Firebase ' + tok;
+    await fetch(`https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${m[1]}`, { method:'DELETE', headers });
+  }catch(e){ console.warn('Storage 사진 삭제 실패:', e.message); }
+}
+
+async function deletePhotoBundle(id){
+  invalidatePhotoBundleCache(id);
+  // 1) Storage에 올라간 실제 사진 파일부터 정리 (안 지우면 용량이 계속 쌓임)
+  try{
+    const b = await fbGet('reportPhotos/' + id);
+    if(b){
+      const all = [].concat(b.activity||[], b.phq9||[], b.ucla||[]);
+      for(const u of all) await deleteStoragePhoto(u);
+    }
+  }catch(e){}
+  // 2) DB 노드 삭제
+  try{ await fbDelete('reportPhotos/' + id); }catch(e){}
+}
 function reportPhotoCount(r){
   if(typeof r.photoCount === 'number') return r.photoCount;
   return (r.photos || []).length;  // 기존 보고서 폴백
@@ -2078,8 +2160,23 @@ async function driveFindOrCreateFolder(token, name, parentId){
   });
   return created.id;
 }
+// Storage URL이면 내려받아 base64로 변환, 기존 base64면 그대로 사용
+async function toBase64ForDrive(src){
+  if(typeof src !== 'string' || !src) throw new Error('사진 데이터 없음');
+  if(src.startsWith('data:')) return src.split(',')[1];   // 기존 base64 (구버전 보고서)
+  const res = await fetch(src);                            // Storage URL → 다운로드
+  if(!res.ok) throw new Error('사진 다운로드 실패 ('+res.status+')');
+  const blob = await res.blob();
+  return await new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onload = ()=> resolve(String(fr.result).split(',')[1]);
+    fr.onerror = ()=> reject(new Error('사진 변환 실패'));
+    fr.readAsDataURL(blob);
+  });
+}
+
 async function driveUpload(token, name, parentId, dataUrl){
-  const base64 = dataUrl.split(',')[1];
+  const base64 = await toBase64ForDrive(dataUrl);
   const boundary = 'mh_boundary_'+Date.now();
   const meta = { name, parents:[parentId] };
   const body =
