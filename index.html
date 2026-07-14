@@ -408,6 +408,8 @@
         <div class="section-header">
           <h3>회원 계정 관리</h3>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-ghost btn-sm" onclick="showAccountCheck()">🔎 계정 점검</button>
+            <button id="btn-reset-pw" class="btn btn-danger btn-sm" onclick="resetAllPasswords()">🔑 비번 일괄 초기화</button>
             <button class="btn btn-ghost btn-sm" onclick="migrateAuthUsers()">🔐 인증 이전</button>
             <button class="btn btn-ghost btn-sm" onclick="showCleanupModal()">🧹 계정 정리</button>
             <button class="btn btn-amber btn-sm" onclick="showBatchUserModal()">+ 여러 명 한번에</button>
@@ -671,6 +673,7 @@ const FETCH_OPTS = {
   mode: 'cors',
   headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }
 };
+const FB_TIMEOUT_MS = 25000;   // DB 요청 최대 대기시간
 
 // ── Firebase Auth (Identity Toolkit REST) ──
 let AUTH = null;   // { idToken, refreshToken, uid, exp }
@@ -717,6 +720,37 @@ async function createAuthAccount(id, pw, v){
   const r = await idApi('signUp', { email, password: pw + PW_SALT, returnSecureToken: true });
   return { uid: r.localId, email };
 }
+// ★ 이미 쓰인 버전이면 v를 올려가며 빈 버전을 찾아 생성 (EMAIL_EXISTS 영구 실패 방지)
+async function createAuthAccountSafe(id, pw, startV){
+  let v = startV || 1, lastErr = null;
+  for(let i = 0; i < 12; i++){
+    try{
+      const a = await createAuthAccount(id, pw, v);
+      return { uid: a.uid, email: a.email, v };
+    }catch(e){
+      lastErr = e;
+      if(String(e.code).indexOf('EMAIL_EXISTS') > -1){ v++; continue; }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+// ★ 계정 1개의 인증정보를 새로 발급하고 색인(authIndex/uidIndex/admins)을 재구축
+async function reissueAccount(id, pw){
+  const u = await fbGet('users/' + id);
+  if(!u) throw new Error('프로필 없음');
+  const idx = await fbGet('authIndex/' + id).catch(()=>null);
+  const acct = await createAuthAccountSafe(id, pw, ((idx && idx.v) || 0) + 1);
+  await fbPatch('users/' + id, { uid: acct.uid, pw: null });
+  await fbSet('authIndex/' + id, { email: acct.email, uid: acct.uid, v: acct.v });
+  await fbSet('uidIndex/' + acct.uid, id);
+  if(u.role === 'admin') await fbSet('admins/' + acct.uid, true);
+  if(idx && idx.uid && idx.uid !== acct.uid){
+    await fbDelete('uidIndex/' + idx.uid);
+    if(u.role === 'admin') await fbDelete('admins/' + idx.uid);
+  }
+  return acct;
+}
 
 // ── DB REST 헬퍼 (인증 토큰 자동 첨부 + 만료 시 1회 재시도) ──
 function fbEqualQuery(field, value){
@@ -731,13 +765,26 @@ async function fbFetch(method, path, data, query){
     const url = DB_URL + '/' + path + '.json' + (parts.length ? '?' + parts.join('&') : '');
     const opts = { ...FETCH_OPTS, method };
     if(data !== undefined) opts.body = JSON.stringify(data);
-    return fetch(url, opts);
+    // ★ 응답이 끝없이 지연될 때 '불러오는 중...'에 갇히지 않도록 타임아웃
+    const ac = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let timer = null;
+    if(ac){ opts.signal = ac.signal; timer = setTimeout(()=>ac.abort(), FB_TIMEOUT_MS); }
+    try{ return await fetch(url, opts); }
+    catch(e){
+      if(e.name === 'AbortError') throw new Error('서버 응답이 너무 느립니다 (시간 초과)');
+      throw e;
+    }
+    finally{ if(timer) clearTimeout(timer); }
   };
   let res = await run();
   if(res.status === 401 && AUTH){          // 토큰 만료 → 갱신 후 1회 재시도
     try{ await refreshAuth(AUTH.refreshToken); refreshSession(); res = await run(); }catch(e){}
   }
-  if(!res.ok) throw new Error(method + ' 실패 ' + res.status);
+  if(!res.ok){
+    let detail = '';
+    try{ const j = await res.json(); detail = (j && j.error) ? (': ' + (j.error.message || j.error)) : ''; }catch(e){}
+    throw new Error(method + ' 실패 ' + res.status + detail);   // ★ 원인(예: Index not defined) 노출
+  }
   return res.json();
 }
 async function fbGet(path, query){ return fbFetch('GET', path, undefined, query); }
@@ -781,7 +828,15 @@ async function getReports(includeDeleted=false) {
   let val;
   if(currentUser && currentUser.role !== 'admin'){
     // 일반 회원: 본인 보고서만 서버에서 조회 (보안 규칙상 전체 조회 불가)
-    val = await fbGet('reports', fbEqualQuery('userId', currentUser.id));
+    try{
+      val = await fbGet('reports', fbEqualQuery('userId', currentUser.id));
+    }catch(e){
+      // ★ 규칙에 ".indexOn": "userId" 가 없으면 400이 납니다 → 전체 조회로 1회 폴백
+      if(String(e.message).indexOf('Index not defined') > -1 || String(e.message).indexOf('400') > -1){
+        console.warn('reports 인덱스 미설정 → 전체 조회로 폴백합니다. 보안규칙에 ".indexOn": "userId" 를 추가하세요.');
+        val = await fbGet('reports');
+      } else throw e;
+    }
   } else {
     val = await fbGet('reports');
   }
@@ -948,7 +1003,7 @@ async function showAdminSetup(){
 async function migrateAuthUsers(){
   if(!currentUser || currentUser.role !== 'admin') return;
   const users = await getUsers();
-  const legacy = users.filter(u => u.pw && !u.uid);
+  const legacy = users.filter(u => !u.uid);   // ★ pw가 이미 지워진 반쪽 계정도 포함
   if(!legacy.length){ alert('이전할 계정이 없습니다. 모든 계정이 이미 새 인증 방식입니다.'); return; }
   if(!confirm(`기존 계정 ${legacy.length}개를 새 인증 방식으로 이전합니다.\n회원의 아이디·비밀번호는 그대로 유지됩니다.\n\n진행할까요?`)) return;
   let ok = 0; const fails = [];
@@ -976,6 +1031,82 @@ async function migrateAuthUsers(){
   }
   alert('✅ ' + ok + '개 계정 이전 완료' + (fails.length ? '\n\n실패 ' + fails.length + '건:\n' + fails.join('\n') : ''));
   renderUserList();
+}
+
+// ══════════════════════════════════════════════
+//  계정 점검 · 비밀번호 일괄 초기화
+// ══════════════════════════════════════════════
+// 로그인 3관문(authIndex → Auth비번 → users읽기) 정합성 점검
+async function diagnoseAccounts(){
+  if(!currentUser || currentUser.role !== 'admin') return [];
+  const users = await getUsers();
+  let uidx = {};
+  try{ uidx = (await fbGet('uidIndex')) || {}; }catch(e){}
+  const rows = [];
+  for(const u of users){
+    let ix = null;
+    try{ ix = await fbGet('authIndex/' + u.id); }catch(e){}
+    const problems = [];
+    if(!ix || !ix.email) problems.push('인증색인 없음');
+    else{
+      if(ix.uid !== u.uid) problems.push('uid 불일치');
+      if(uidx[ix.uid] !== u.id) problems.push('uidIndex 누락');
+    }
+    if(u.pw) problems.push('평문 비번 잔존');
+    rows.push({ id: u.id, name: u.name, role: u.role || 'user', ok: problems.length === 0, problems });
+  }
+  return rows;
+}
+async function showAccountCheck(){
+  const rows = await diagnoseAccounts();
+  const bad = rows.filter(r => !r.ok);
+  const lines = bad.length
+    ? bad.map(r => `· ${r.name}(${r.id}) — ${r.problems.join(', ')}`).join('\n')
+    : '문제 없는 상태입니다.';
+  alert(`🔎 계정 점검 결과\n\n전체 ${rows.length}명 / 문제 ${bad.length}명\n\n${lines}\n\n※ 문제 계정은 [🔑 비번 일괄 초기화]로 복구할 수 있습니다.`);
+  console.table(rows.map(r => ({ 아이디:r.id, 이름:r.name, 권한:r.role, 상태: r.ok ? '✅ 정상' : '❌ ' + r.problems.join(', ') })));
+}
+
+// 비밀번호를 1234(또는 지정값)로 일괄 재발급
+async function resetAllPasswords(){
+  if(!currentUser || currentUser.role !== 'admin') return;
+  const pw = (prompt('초기화할 비밀번호를 입력하세요. (4자 이상)', '1234') || '').trim();
+  if(pw.length < 4){ alert('비밀번호는 4자 이상이어야 합니다.'); return; }
+
+  const mode = confirm(
+    '어떤 계정을 초기화할까요?\n\n' +
+    '[확인] 문제가 있는 계정만 (권장)\n' +
+    '[취소] 관리자를 제외한 회원 전체'
+  ) ? 'bad' : 'all';
+
+  const rows = await diagnoseAccounts();
+  let targets = (mode === 'bad')
+    ? rows.filter(r => !r.ok).map(r => r.id)
+    : rows.filter(r => r.role !== 'admin').map(r => r.id);
+  targets = targets.filter(id => id !== currentUser.id);   // 본인 계정은 제외(세션 끊김 방지)
+
+  if(!targets.length){ alert('초기화할 계정이 없습니다.'); return; }
+  if(!confirm(
+    `회원 ${targets.length}명의 비밀번호를 "${pw}" 로 초기화합니다.\n\n` +
+    `· 해당 회원의 자동 로그인은 모두 해제됩니다.\n` +
+    `· 되돌릴 수 없습니다.\n\n진행할까요?`
+  )) return;
+
+  const btn = document.getElementById('btn-reset-pw');
+  if(btn){ btn.disabled = true; btn.textContent = '초기화 중...'; }
+
+  let ok = 0; const fails = [];
+  for(let i = 0; i < targets.length; i++){
+    const id = targets[i];
+    if(btn) btn.textContent = `초기화 중... (${i+1}/${targets.length})`;
+    try{ await reissueAccount(id, pw); ok++; }
+    catch(e){ fails.push(id + ': ' + (e.code || e.message)); }
+    await new Promise(r => setTimeout(r, 350));   // 요청 과다(TOO_MANY_ATTEMPTS) 방지
+  }
+
+  if(btn){ btn.disabled = false; btn.textContent = '🔑 비번 일괄 초기화'; }
+  renderUserList();
+  alert(`✅ ${ok}명 초기화 완료 (비밀번호: ${pw})` + (fails.length ? `\n\n❌ 실패 ${fails.length}건:\n${fails.join('\n')}` : ''));
 }
 
 // ══════════════════════════════════════════════
@@ -1095,8 +1226,11 @@ async function doLogin() {
   try {
     let idx = null;
     try{ idx = await fbGet('authIndex/' + id); }catch(e){}
+    if(!idx || !idx.email){   // ★ 대소문자 다르게 만든 아이디 폴백
+      try{ idx = await fbGet('authIndex/' + id.toLowerCase()); }catch(e){}
+    }
     if(!idx || !idx.email){
-      showErr('아이디 또는 비밀번호가 올바르지 않습니다.');
+      showErr('아이디 또는 비밀번호가 올바르지 않습니다. (E-01)');
       return;
     }
     try{
@@ -1114,7 +1248,7 @@ async function doLogin() {
       return;
     }
     const userData = await fbGet('users/' + id).catch(()=>null);
-    if (!userData) { AUTH = null; showErr('삭제되었거나 사용할 수 없는 계정입니다.'); return; }
+    if (!userData) { AUTH = null; showErr('삭제되었거나 사용할 수 없는 계정입니다. (E-03)'); return; }
     errEl.classList.add('hidden');
     currentUser = userData;
     const remember = document.getElementById('login-remember') ? document.getElementById('login-remember').checked : true;
@@ -1578,6 +1712,7 @@ async function submitReport() {
     resetSurveyForm();
     setDefaultDateTime();
     if (btn) { btn.disabled = false; btn.textContent = '담당자 확인 · 보고서 제출'; }
+    invalidateMyReports();   // 새 보고서가 목록에 바로 보이도록
     alert(`✅ 보고서가 제출되었습니다!\n대상자: ${target} | ${SESSION_LABELS[session]}`);
   } catch(e) {
     const btn = document.querySelector('.submit-box .btn');
@@ -1590,13 +1725,87 @@ async function submitReport() {
 // ══════════════════════════════════════════════
 //  내 보고서 목록
 // ══════════════════════════════════════════════
-async function renderMyReports() {
+// ── 내 보고서 목록 ──
+let _myReportsCache = null;              // 탭 이동 시 재다운로드 방지
+function invalidateMyReports(){ _myReportsCache = null; }
+
+async function renderMyReports(force) {
   const el = document.getElementById('my-report-list');
+  if (!el) return;
+
+  // 1) 캐시가 있으면 즉시 그림 (탭 왕복 시 로딩 없음)
+  if (_myReportsCache && !force) { paintMyReports(_myReportsCache); return; }
+
   el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:20px;">불러오는 중...</div>';
-  const reports = await getReports();
+
+  let reports;
+  try {
+    reports = await getReports();
+  } catch (e) {
+    // ★ 기존에는 여기서 예외가 삼켜져 '불러오는 중...'에 영구히 갇혔습니다
+    console.error('내 보고서 조회 실패:', e);
+    el.innerHTML = `<div style="text-align:center;padding:34px 0;">
+      <div style="font-size:34px;margin-bottom:8px;">⚠️</div>
+      <div style="color:var(--red);font-size:16px;font-weight:700;margin-bottom:4px;">목록을 불러오지 못했습니다</div>
+      <div style="color:var(--gray);font-size:13px;margin-bottom:14px;">${escTxt(e.message || '알 수 없는 오류')}</div>
+      <button class="btn btn-primary btn-sm" onclick="renderMyReports(true)">🔄 다시 시도</button>
+    </div>`;
+    return;
+  }
+
   const mine = reports.filter(r => r.userId === currentUser.id);
-  if (!mine.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">제출된 보고서가 없습니다.</div>'; return; }
-  el.innerHTML = mine.map(r => reportItemHTML(r)).join('');
+  mine.forEach(r => { if (!reportsCache[r.id]) reportsCache[r.id] = r; });   // 상세 열 때 재조회 방지
+  _myReportsCache = mine;
+  paintMyReports(mine);
+  slimLegacyReports(mine);   // 2) 무거운 옛 보고서는 백그라운드에서 자동 경량화
+}
+
+function paintMyReports(mine) {
+  const el = document.getElementById('my-report-list');
+  if (!el) return;
+  if (!mine.length) {
+    el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">제출된 보고서가 없습니다.</div>';
+    return;
+  }
+  el.innerHTML =
+    `<div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+       <button class="btn btn-ghost btn-sm" onclick="renderMyReports(true)">🔄 새로고침</button>
+     </div>` + mine.map(r => reportItemHTML(r)).join('');
+}
+
+// 본문에 사진(base64)이 박혀 있는 옛 보고서 → reportPhotos 노드로 분리해 목록 로딩을 가볍게
+let _slimRunning = false;
+async function slimLegacyReports(list) {
+  if (_slimRunning) return;
+  const legacy = list.filter(r =>
+    (r.photos && r.photos.length) ||
+    (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) ||
+                  (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length)))
+  );
+  if (!legacy.length) return;
+  _slimRunning = true;
+  console.log(`[자동 최적화] 무거운 보고서 ${legacy.length}건 정리 시작`);
+  for (const r of legacy) {
+    try {
+      const bundle = {
+        activity: r.photos || [],
+        phq9: (r.survey && r.survey.phq9 && r.survey.phq9.photos) || [],
+        ucla: (r.survey && r.survey.ucla && r.survey.ucla.photos) || []
+      };
+      await savePhotoBundle(r.id, bundle);
+      const clean = { ...r, photoCount: bundle.activity.length, surveyPhotoCount: { phq9: bundle.phq9.length, ucla: bundle.ucla.length } };
+      delete clean.photos; delete clean._photosLoaded;
+      if (clean.survey) {
+        clean.survey = JSON.parse(JSON.stringify(clean.survey));
+        if (clean.survey.phq9) delete clean.survey.phq9.photos;
+        if (clean.survey.ucla) delete clean.survey.ucla.photos;
+      }
+      await saveReport(clean);
+      console.log('[자동 최적화] 완료:', r.id);
+    } catch (e) { console.warn('[자동 최적화] 실패:', r.id, e.message); }
+  }
+  _slimRunning = false;
+  invalidateMyReports();   // 다음 조회부터 가벼운 본문으로
 }
 
 function reportItemHTML(r) {
@@ -1915,7 +2124,7 @@ async function saveEditReport(id){
       if (typeof renderAllReports === 'function') renderAllReports();
       if (typeof renderAdminDashboard === 'function') renderAdminDashboard();
     } else {
-      if (typeof renderMyReports === 'function') renderMyReports();
+      if (typeof renderMyReports === 'function') { invalidateMyReports(); renderMyReports(true); }
     }
   }catch(e){
     if(btn){ btn.disabled = false; btn.textContent = '💾 수정 내용 저장'; }
@@ -2058,7 +2267,7 @@ function refreshAfterReportChange(){
     const sv=document.getElementById('atab-survey');
     if(sv && !sv.classList.contains('hidden') && typeof renderSurveyTab==='function') renderSurveyTab();
   } else {
-    if(typeof renderMyReports==='function') renderMyReports();
+    if(typeof renderMyReports==='function') { invalidateMyReports(); renderMyReports(true); }
   }
 }
 
@@ -2694,9 +2903,9 @@ async function createAccount() {
   const existingIdx = await fbGet('authIndex/'+id).catch(()=>null);
   if (existing || existingIdx) { showErr('이미 사용 중인 아이디입니다.'); return; }
   try{
-    const acct = await createAuthAccount(id, pw, 1);
+    const acct = await createAuthAccountSafe(id, pw, 1);   // ★ 삭제됐던 아이디 재등록 가능
     await saveUser({ id, role, name, volunteer, targets:[], uid: acct.uid });
-    await fbSet('authIndex/' + id, { email: acct.email, uid: acct.uid, v: 1 });
+    await fbSet('authIndex/' + id, { email: acct.email, uid: acct.uid, v: acct.v });
     await fbSet('uidIndex/' + acct.uid, id);
     if(role === 'admin') await fbSet('admins/' + acct.uid, true);
   }catch(e){
@@ -2745,9 +2954,9 @@ async function createUsersBatch(){
   let ok=0; const fails=[];
   for(const r of rows){
     try{
-      const acct = await createAuthAccount(r.id, r.pw, 1);
+      const acct = await createAuthAccountSafe(r.id, r.pw, 1);   // ★ 삭제됐던 아이디 재등록 가능
       await saveUser({ id:r.id, role:'user', name:r.name, volunteer:r.volunteer, targets:[], uid: acct.uid });
-      await fbSet('authIndex/' + r.id, { email: acct.email, uid: acct.uid, v: 1 });
+      await fbSet('authIndex/' + r.id, { email: acct.email, uid: acct.uid, v: acct.v });
       await fbSet('uidIndex/' + acct.uid, r.id);
       ok++;
     }catch(e){ fails.push(r.id + ': ' + (e.code || e.message)); }
@@ -2941,19 +3150,9 @@ async function saveAdminPw() {
   if (pw1!==pw2) { showErr('비밀번호가 일치하지 않습니다.'); return; }
   try{
     const id = pwTargetUserId;
-    const idx = await fbGet('authIndex/' + id).catch(()=>null);
-    const u = await fbGet('users/' + id).catch(()=>null);
-    const v = ((idx && idx.v) || 1) + 1;
     // 새 버전의 인증 계정을 발급해 교체 (회원의 아이디는 그대로 유지)
-    const acct = await createAuthAccount(id, pw1, v);
-    await fbPatch('users/' + id, { uid: acct.uid });
-    await fbSet('authIndex/' + id, { email: acct.email, uid: acct.uid, v });
-    await fbSet('uidIndex/' + acct.uid, id);
-    if(u && u.role === 'admin') await fbSet('admins/' + acct.uid, true);
-    if(idx && idx.uid){
-      await fbDelete('uidIndex/' + idx.uid);
-      if(u && u.role === 'admin') await fbDelete('admins/' + idx.uid);  // 이전 인증 계정의 관리자 권한 회수
-    }
+    // ★ 버전이 이미 쓰였으면 자동으로 다음 버전을 찾음 + 색인 전체 재구축
+    await reissueAccount(id, pw1);
     document.getElementById('admin-pw-modal').classList.add('hidden');
     if(currentUser && id === currentUser.id){
       alert('✅ 내 비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해주세요.');
