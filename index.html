@@ -412,6 +412,7 @@
             <button id="btn-reset-pw" class="btn btn-danger btn-sm" onclick="resetAllPasswords()">🔑 비번 일괄 초기화</button>
             <button class="btn btn-ghost btn-sm" onclick="migrateAuthUsers()">🔐 인증 이전</button>
             <button class="btn btn-ghost btn-sm" onclick="showCleanupModal()">🧹 계정 정리</button>
+            <button class="btn btn-ghost btn-sm" onclick="repairReportNames()">🔧 보고서 이름 정리</button>
             <button class="btn btn-amber btn-sm" onclick="showBatchUserModal()">+ 여러 명 한번에</button>
             <button class="btn btn-primary btn-sm" onclick="showCreateModal()">+ 회원 추가</button>
           </div>
@@ -2581,10 +2582,53 @@ async function renderUserList() {
 
 // 표에서 셀 직접 수정 → 즉시 저장
 async function updateUserField(uid, field, value){
+  const newVal = value.trim();
   try{
-    await fbPatch('users/' + uid, { [field]: value.trim() });
+    if(field === 'name'){
+      // ★ 이름 변경 시: 이 계정이 이미 제출한 보고서의 이름(userName/target)도 함께 바꿔
+      //    명단·통계가 두 사람으로 갈라지지 않게 한다.
+      const u = await fbGet('users/' + uid);
+      const oldName = ((u && u.name) || '').trim();
+      await fbPatch('users/' + uid, { name: newVal });
+      if(oldName && newVal && oldName !== newVal){
+        const all = await getReports(true);   // 휴지통 포함
+        const mine = all.filter(r => r.userId === uid && (r.userName === oldName || r.target === oldName));
+        let ok = 0;
+        for(const r of mine){
+          const patch = {};
+          if(r.userName === oldName) patch.userName = newVal;
+          if(r.target   === oldName) patch.target   = newVal;
+          try{ await fbPatch('reports/' + r.id, patch); ok++; }catch(e){}
+        }
+        if(mine.length) alert(`✅ 이름 변경 완료\n기존 보고서 ${ok}건의 이름도 '${oldName}' → '${newVal}' 로 함께 수정되어 같은 명단으로 취합됩니다.`);
+        if(typeof renderAllReports === 'function' && document.getElementById('atab-reports') && !document.getElementById('atab-reports').classList.contains('hidden')) renderAllReports();
+      }
+    } else {
+      await fbPatch('users/' + uid, { [field]: newVal });
+    }
     renderAdminDashboard();  // 담당자 수 등 통계 갱신
   }catch(e){ alert('저장 중 오류가 발생했습니다: ' + e.message); }
+}
+
+// ★ 이미 갈라진 데이터 복구용: 각 계정의 현재 이름 기준으로 과거 보고서 이름을 일괄 정리
+//   (계정 관리 탭의 '🔧 보고서 이름 정리' 버튼 또는 콘솔에서 repairReportNames() 호출)
+async function repairReportNames(){
+  if(!confirm('모든 계정의 "현재 이름"을 기준으로, 과거 보고서에 남아 있는 옛 이름을 일괄 수정합니다.\n(예: 이름 변경 전 제출된 보고서가 다른 사람으로 보이는 문제 해결)\n\n진행할까요?')) return;
+  const [users, reports] = await Promise.all([getUsers(), getReports(true)]);
+  const byId = {}; users.forEach(u => byId[u.id] = u);
+  let fixed = 0;
+  for(const r of reports){
+    const u = byId[r.userId];
+    if(!u || !u.name) continue;
+    if(r.userName === u.name) continue;          // 이미 최신 이름
+    const patch = { userName: u.name };
+    // 대상자가 회원 본인(옛 이름으로 기록)인 경우에만 target도 함께 갱신
+    if(r.target === r.userName) patch.target = u.name;
+    try{ await fbPatch('reports/' + r.id, patch); fixed++; }catch(e){}
+  }
+  alert(fixed ? `✅ 보고서 ${fixed}건의 이름을 현재 계정 이름으로 정리했습니다.` : '정리할 항목이 없습니다. 모두 최신 이름입니다.');
+  if(typeof renderAllReports === 'function') renderAllReports();
+  renderAdminDashboard();
 }
 
 // 담당 자원봉사자만 간단 수정
@@ -3216,7 +3260,7 @@ async function renderAllReports() {
   let reports = await getReports();
   allReportsCache = reports;  // 삭제/수정 정합성용 캐시 갱신
   if (filterUser) reports = reports.filter(r => r.userId === filterUser);
-  renderTargetSummary(reports);
+  renderTargetSummary(reports, filterUser);
   if (!reports.length) { el.innerHTML = '<div style="text-align:center;color:var(--gray);padding:40px 0;font-size:16px;">보고서가 없습니다.</div>'; return; }
 
   if (filterUser) {
@@ -3283,39 +3327,92 @@ function buildTargetSummary(reports) {
   return map;
 }
 
-function renderTargetSummary(reports) {
+let _showIncompleteOnly = false;
+function toggleIncompleteOnly(chk){ _showIncompleteOnly = chk.checked; if(typeof renderAllReports==='function') renderAllReports(); }
+
+// ★ 명단(계정) 기준 진행 현황: 아직 진행하지 않은(미제출) 회기를 한눈에 조회
+async function renderTargetSummary(reports, filterUser) {
   const box = document.getElementById('target-summary-box');
-  if (!reports.length) { box.innerHTML=''; return; }
-  const map = buildTargetSummary(reports);
-  const rows = Object.entries(map).map(([name,d]) => {
-    const sessionList = [...d.sessions].map(s=>s.split('·')[0].trim()).join(', ');
-    return `<tr>
-      <td style="padding:10px 14px;font-weight:700;color:var(--brown);">${escTxt(name)}</td>
-      <td style="padding:10px 14px;text-align:center;">${d.count}회</td>
-      <td style="padding:10px 14px;font-size:14px;color:var(--gray);">${escTxt(sessionList)}</td>
+  if(!box) return;
+  // 1) 명단(roster) 구성: 회원 본인 + 추가 서비스 대상자
+  let users = await getUsers();
+  let members = users.filter(u => u.role !== 'admin');
+  if(filterUser) members = members.filter(u => u.id === filterUser);
+  const roster = [];   // {name, owner(회원), volunteer}
+  const seen = new Set();
+  members.forEach(u => {
+    [u.name, ...((u.targets)||[])].forEach(n => {
+      if(!n) return;
+      const key = u.id + '|' + n;
+      if(seen.has(key)) return; seen.add(key);
+      roster.push({ name:n, owner:u.name, volunteer:u.volunteer||'' });
+    });
+  });
+  // 2) 대상자별 제출 회기 집계 (회기 라벨 앞의 숫자로 판별)
+  const done = {};   // name → {sessions:Set, count, notes:[], latestDate, userName}
+  reports.forEach(r => {
+    const k = r.target;
+    if(!done[k]) done[k] = { sessions:new Set(), count:0, notes:[], latestDate:'', userName:r.userName };
+    const num = String(parseInt(r.session,10));
+    if(SESSION_KEYS.includes(num)) done[k].sessions.add(num);
+    done[k].count++;
+    if(r.note && r.note!=='없음') done[k].notes.push(r.note);
+    if(!done[k].latestDate || r.date > done[k].latestDate) done[k].latestDate = r.date;
+  });
+  // 3) 명단에 없는데 보고서에만 있는 이름(예: 이름 변경 전 기록)도 표시해 놓치지 않게 함
+  const rosterNames = new Set(roster.map(r=>r.name));
+  Object.keys(done).forEach(n => { if(!rosterNames.has(n)) roster.push({ name:n, owner:'(명단 외 — 이름 변경 전 기록일 수 있음)', volunteer:'' }); });
+  if(!roster.length){ box.innerHTML=''; return; }
+
+  const total = SESSION_KEYS.length;
+  let rowsData = roster.map(t => {
+    const d = done[t.name] || { sessions:new Set(), count:0, notes:[], latestDate:'' };
+    const missing = SESSION_KEYS.filter(k => !d.sessions.has(k));
+    return { ...t, d, missing };
+  });
+  const incompleteCnt = rowsData.filter(r => r.missing.length > 0).length;
+  if(_showIncompleteOnly) rowsData = rowsData.filter(r => r.missing.length > 0);
+
+  const rows = rowsData.map(t => {
+    const doneList = SESSION_KEYS.filter(k => t.d.sessions.has(k)).map(k=>k+'회기').join(', ') || '-';
+    const missChips = t.missing.length
+      ? t.missing.map(k=>`<span style="background:#FEF4F0;color:var(--red);padding:3px 9px;border-radius:20px;font-size:13px;font-weight:700;margin-right:4px;display:inline-block;">${k}회기</span>`).join('')
+      : `<span style="background:#EEF6EC;color:var(--green);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">✅ 전체 완료</span>`;
+    return `<tr style="${t.missing.length===total?'background:#FFF8F5;':''}">
+      <td style="padding:10px 14px;font-weight:700;color:var(--brown);">${escTxt(t.name)}</td>
+      <td style="padding:10px 14px;font-size:14px;color:var(--gray);">${escTxt(t.owner)}</td>
+      <td style="padding:10px 14px;text-align:center;font-weight:700;color:${t.missing.length? 'var(--amber)':'var(--green)'};">${total - t.missing.length}/${total}</td>
+      <td style="padding:10px 14px;font-size:14px;color:var(--gray);">${escTxt(doneList)}</td>
+      <td style="padding:10px 14px;">${missChips}</td>
       <td style="padding:10px 14px;text-align:center;">
-        ${d.notes.length>0
-          ?`<span style="background:#FEF4F0;color:var(--red);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">⚠ ${d.notes.length}건</span>`
+        ${t.d.notes.length>0
+          ?`<span style="background:#FEF4F0;color:var(--red);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">⚠ ${t.d.notes.length}건</span>`
           :`<span style="background:#EEF6EC;color:var(--green);padding:3px 10px;border-radius:20px;font-size:13px;font-weight:700;">없음</span>`}
       </td>
-      <td style="padding:10px 14px;text-align:center;font-size:15px;color:var(--gray);">${escTxt(d.latestDate)}</td>
-      <td style="padding:10px 14px;font-size:15px;color:var(--gray);">${escTxt(d.userName)}</td>
+      <td style="padding:10px 14px;text-align:center;font-size:15px;color:var(--gray);">${escTxt(t.d.latestDate||'-')}</td>
     </tr>`;
   }).join('');
+
   box.innerHTML = `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="background:var(--primary);padding:12px 18px;"><span style="font-size:16px;font-weight:800;color:#fff;">📊 대상자별 진행 현황</span></div>
+      <div style="background:var(--primary);padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <span style="font-size:16px;font-weight:800;color:#fff;">📊 대상자별 진행 현황 <span style="font-weight:500;font-size:14px;opacity:.9;">(미완료 ${incompleteCnt}명 / 전체 ${roster.length}명)</span></span>
+        <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">
+          <input type="checkbox" style="width:17px;height:17px;accent-color:#fff;" ${_showIncompleteOnly?'checked':''} onchange="toggleIncompleteOnly(this)"> 미완료 대상자만 보기
+        </label>
+      </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:15px;">
           <thead><tr style="background:var(--cream-d);">
             <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">대상자</th>
-            <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">총 방문</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">진행 회기</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">담당 회원(계정)</th>
+            <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">진행률</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">완료 회기</th>
+            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">미진행 회기</th>
             <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">특이사항</th>
             <th style="padding:10px 14px;text-align:center;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">최근 방문일</th>
-            <th style="padding:10px 14px;text-align:left;font-weight:700;color:var(--brown);border-bottom:1.5px solid var(--sand);">담당자</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>${rows || '<tr><td colspan="7" style="padding:18px;text-align:center;color:var(--gray);">🎉 모든 대상자가 전 회기를 완료했습니다.</td></tr>'}</tbody>
         </table>
       </div>
     </div>`;
