@@ -923,8 +923,12 @@ async function doLogin() {
 
   try {
     const userData = await fbGet('users/' + id);
-    if (!userData || userData.pw !== pw) {
-      errEl.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
+    if (!userData) {
+      errEl.textContent = '존재하지 않는 아이디입니다.';
+      errEl.classList.remove('hidden'); return;
+    }
+    if (String(userData.pw) !== String(pw)) {
+      errEl.textContent = '비밀번호가 올바르지 않습니다.';
       errEl.classList.remove('hidden'); return;
     }
     errEl.classList.add('hidden');
@@ -2857,6 +2861,11 @@ async function saveAdminPw() {
   if (pw1.length<4) { errEl.textContent='비밀번호는 4자 이상이어야 합니다.'; errEl.classList.remove('hidden'); return; }
   if (pw1!==pw2) { errEl.textContent='비밀번호가 일치하지 않습니다.'; errEl.classList.remove('hidden'); return; }
   await fbSet('users/'+pwTargetUserId+'/pw', pw1);
+  // 관리자가 '자기 계정' 비번을 바꾼 경우, 자동로그인 세션도 새 비번으로 갱신
+  if (currentUser && pwTargetUserId === currentUser.id) {
+    currentUser.pw = pw1;
+    if (typeof refreshSession === 'function') refreshSession();
+  }
   document.getElementById('admin-pw-modal').classList.add('hidden');
   alert('✅ 비밀번호가 변경되었습니다.');
 }
