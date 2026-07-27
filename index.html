@@ -566,14 +566,14 @@
 <div id="event-edit-modal" class="modal-overlay hidden" onclick="if(event.target===this)this.classList.add('hidden')">
   <div class="modal" style="max-width:480px;">
     <div class="modal-title">
-      <span>🎉 행사 등록</span>
+      <span id="event-edit-title">🎉 행사 등록</span>
       <button class="modal-close" onclick="document.getElementById('event-edit-modal').classList.add('hidden')">✕</button>
     </div>
     <div class="field"><label class="label">행사명 <span class="req">*</span></label><input type="text" id="ev-title" placeholder="예) 여름 나들이 행사"></div>
     <div class="field"><label class="label">날짜</label><input type="date" id="ev-date"></div>
     <div class="field"><label class="label">설명(선택)</label><textarea id="ev-note" placeholder="장소, 시간 등 참고사항" style="min-height:60px;"></textarea></div>
     <div id="ev-err" class="login-err hidden"></div>
-    <button class="btn btn-primary" style="width:100%;padding:12px;margin-top:6px;" onclick="saveEvent()">저장하고 시작</button>
+    <button class="btn btn-primary" id="ev-save-btn" style="width:100%;padding:12px;margin-top:6px;" onclick="saveEvent()">저장하고 시작</button>
   </div>
 </div>
 
@@ -1326,6 +1326,8 @@ async function renderEventAdmin(){
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           ${ev.active ? `<button class="btn btn-ghost btn-sm" onclick="toggleEvent(false)">종료하기</button>` : `<button class="btn btn-amber btn-sm" onclick="toggleEvent(true)">다시 시작</button>`}
+          <button class="btn btn-ghost btn-sm" onclick="showEventEditModal(false)">수정</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteEvent()">삭제</button>
           <button class="btn btn-primary btn-sm" onclick="showEventEditModal(true)">+ 새 행사</button>
         </div>
       </div>
@@ -1341,12 +1343,25 @@ async function renderEventAdmin(){
     </div>`;
 }
 
-function showEventEditModal(isNew){
-  document.getElementById('ev-title').value = isNew ? '' : '';
-  document.getElementById('ev-date').value = '';
-  document.getElementById('ev-note').value = '';
-  document.getElementById('ev-err').classList.add('hidden');
-  document.getElementById('event-edit-modal').classList.remove('hidden');
+async function showEventEditModal(isNew){
+  const modal = document.getElementById('event-edit-modal');
+  const err = document.getElementById('ev-err');
+  err.classList.add('hidden');
+  window._evEditIsNew = isNew;
+  document.getElementById('event-edit-title').textContent = isNew ? '🎉 새 행사 등록' : '✏️ 행사 수정';
+  document.getElementById('ev-save-btn').textContent = isNew ? '저장하고 시작' : '수정 저장';
+  if(isNew){
+    document.getElementById('ev-title').value = '';
+    document.getElementById('ev-date').value = '';
+    document.getElementById('ev-note').value = '';
+  } else {
+    let ev; try{ ev = await fbGet('meta/currentEvent'); }catch(e){}
+    if(!ev){ modal.classList.add('hidden'); return; }
+    document.getElementById('ev-title').value = ev.title || '';
+    document.getElementById('ev-date').value = ev.date || '';
+    document.getElementById('ev-note').value = ev.note || '';
+  }
+  modal.classList.remove('hidden');
 }
 async function saveEvent(){
   const err = document.getElementById('ev-err');
@@ -1354,12 +1369,26 @@ async function saveEvent(){
   const date = document.getElementById('ev-date').value;
   const note = document.getElementById('ev-note').value.trim();
   if(!title){ err.textContent = '행사명을 입력해주세요.'; err.classList.remove('hidden'); return; }
-  const ev = { id: Date.now().toString(), title, date, note, active: true, createdAt: new Date().toISOString() };
   try{
-    await fbSet('meta/currentEvent', ev);
+    if(window._evEditIsNew){
+      const ev = { id: Date.now().toString(), title, date, note, active: true, createdAt: new Date().toISOString() };
+      await fbSet('meta/currentEvent', ev);
+    } else {
+      await fbPatch('meta/currentEvent', { title, date, note });
+    }
     document.getElementById('event-edit-modal').classList.add('hidden');
     renderEventAdmin();
   }catch(e){ err.textContent = '저장 중 오류: ' + e.message; err.classList.remove('hidden'); }
+}
+async function deleteEvent(){
+  let ev; try{ ev = await fbGet('meta/currentEvent'); }catch(e){}
+  if(!ev){ return; }
+  if(!confirm(`'${ev.title}' 행사를 삭제할까요?\n\n지금까지 응답받은 참석 여부 기록도 함께 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`)) return;
+  try{
+    await fbDelete('meta/currentEvent');
+    await fbDelete('eventResponses/' + ev.id);
+    renderEventAdmin();
+  }catch(e){ alert('삭제 중 오류: ' + e.message); }
 }
 async function toggleEvent(active){
   try{ await fbPatch('meta/currentEvent', { active }); renderEventAdmin(); }
