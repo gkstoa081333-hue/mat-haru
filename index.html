@@ -1282,7 +1282,7 @@ async function renderEventAdmin(){
   if(!ev){
     box.innerHTML = `<div class="card" style="text-align:center;padding:30px;">
       <p style="color:var(--gray);margin-bottom:14px;">등록된 행사가 없습니다.</p>
-      <button class="btn btn-primary" onclick="showEventEditModal()">+ 행사 등록</button>
+      <button class="btn btn-primary" onclick="showEventEditModal(true)">+ 행사 등록</button>
     </div>`;
     return;
   }
@@ -1356,7 +1356,7 @@ async function showEventEditModal(isNew){
     document.getElementById('ev-note').value = '';
   } else {
     let ev; try{ ev = await fbGet('meta/currentEvent'); }catch(e){}
-    if(!ev){ modal.classList.add('hidden'); return; }
+    if(!ev){ alert('수정할 행사가 없습니다. 새 행사를 등록해주세요.'); return showEventEditModal(true); }
     document.getElementById('ev-title').value = ev.title || '';
     document.getElementById('ev-date').value = ev.date || '';
     document.getElementById('ev-note').value = ev.note || '';
