@@ -2158,7 +2158,7 @@ function backupToDrive(){
       catch(e){ blog('❌ 오류: ' + e.message); console.error(e); }
     }
   });
-  tokenClient.requestAccessToken({ prompt: '' });
+  tokenClient.requestAccessToken();
 }
 
 async function driveApi(token, url, opts={}){
