@@ -2180,8 +2180,19 @@ async function driveFindOrCreateFolder(token, name, parentId){
   });
   return created.id;
 }
-async function driveUpload(token, name, parentId, dataUrl){
-  const base64 = dataUrl.split(',')[1];
+async function toBase64(dataUrl){
+    if(dataUrl.startsWith('data:')) return dataUrl.split(',')[1];
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+    });
+}
+  async function driveUpload(token, name, parentId, dataUrl){
+  const base64 = await toBase64(dataUrl);
   const boundary = 'mh_boundary_'+Date.now();
   const meta = { name, parents:[parentId] };
   const body =
