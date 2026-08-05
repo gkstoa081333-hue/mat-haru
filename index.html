@@ -2209,7 +2209,7 @@ async function runBackup(token){
   blog('✅ 인증 완료. 백업을 시작합니다.');
   const reports = await getReports();      // 휴지통 제외
   // 사진이 있는 보고서만
-  const withPhotos = reports.filter(r => !r.driveBackedUp && reportPhotoCount(r) > 0 || (r.surveyPhotoCount && (r.surveyPhotoCount.phq9 || r.surveyPhotoCount.ucla)) || (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length))));
+  const withPhotos = reports.filter(r => !r.driveBackedUp && (reportPhotoCount(r) > 0 || (r.surveyPhotoCount && (r.surveyPhotoCount.phq9 || r.surveyPhotoCount.ucla)) || (r.survey && ((r.survey.phq9 && r.survey.phq9.photos && r.survey.phq9.photos.length) || (r.survey.ucla && r.survey.ucla.photos && r.survey.ucla.photos.length)))));
   if(!withPhotos.length){ blog('백업할 사진이 없습니다.'); if(btn){btn.disabled=false;btn.textContent='☁️ 구글 드라이브로 사진 백업 시작';} return; }
 
   blog(`총 ${withPhotos.length}건의 보고서를 백업합니다.`);
