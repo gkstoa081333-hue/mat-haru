@@ -2188,13 +2188,19 @@ async function driveUpload(token, name, parentId, dataUrl){
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
     `--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n` +
     `--${boundary}--`;
-  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-    method:'POST',
-    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'multipart/related; boundary='+boundary },
-    body
-  });
-  if(!res.ok) throw new Error('업로드 실패 ('+res.status+')');
-  return res.json();
+  let lastErr;
+      for(let i=0;i<3;i++){
+              try{
+                        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                                    method:'POST',
+                                    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'multipart/related; boundary='+boundary },
+                                    body
+                        });
+                        if(!res.ok) throw new Error('업로드 실패 ('+res.status+')');
+                        return res.json();
+              }catch(e){ lastErr = e; await new Promise(r=>setTimeout(r, 800*(i+1))); }
+      }
+      throw lastErr;
 }
 
 async function runBackup(token){
