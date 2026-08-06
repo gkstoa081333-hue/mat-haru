@@ -2152,7 +2152,7 @@ function backupToDrive(){
     client_id: cid,
     scope: DRIVE_SCOPE,
     callback: async (resp) => {
-      if(resp.error){ blog('❌ 인증 실패: ' + resp.error); return; }
+      if(resp.error){ blog('❌ 인증 실패: ' + resp.error + (resp.error_description?(' - '+resp.error_description):'')); return; }
       _driveToken = resp.access_token;
       try{ await runBackup(_driveToken); }
       catch(e){ blog('❌ 오류: ' + e.message); console.error(e); }
@@ -2163,7 +2163,10 @@ function backupToDrive(){
 
 async function driveApi(token, url, opts={}){
   const res = await fetch(url, { ...opts, headers: { 'Authorization':'Bearer '+token, ...(opts.headers||{}) } });
-  if(!res.ok){ throw new Error('드라이브 API 오류 ('+res.status+')'); }
+  if(!res.ok){
+    let detail=''; try{ const j = await res.json(); detail = (j && j.error && j.error.message) || ''; }catch(e){}
+    throw new Error('드라이브 API 오류 ('+res.status+')' + (detail?': '+detail:''));
+  }
   return res.json();
 }
 async function driveFindOrCreateFolder(token, name, parentId){
@@ -2207,7 +2210,10 @@ async function toBase64(dataUrl){
                                     headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'multipart/related; boundary='+boundary },
                                     body
                         });
-                        if(!res.ok) throw new Error('업로드 실패 ('+res.status+')');
+                        if(!res.ok){
+                          let detail=''; try{ const j = await res.json(); detail = (j && j.error && j.error.message) || ''; }catch(e){}
+                          throw new Error('업로드 실패 ('+res.status+')' + (detail?': '+detail:''));
+                        }
                         return res.json();
               }catch(e){ lastErr = e; await new Promise(r=>setTimeout(r, 800*(i+1))); }
       }
